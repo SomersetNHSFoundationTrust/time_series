@@ -3,7 +3,9 @@ import numpy as np
 from models import *
 import random
 from scipy.stats import norm
-from math import *
+from statsmodels.tsa.seasonal import STL
+
+
 
 
 def bs_error(df:pd.DataFrame) -> pd.DataFrame:
@@ -14,13 +16,13 @@ def bs_error(df:pd.DataFrame) -> pd.DataFrame:
     Ouputs:
         pandas.DataFrame: 
     """
-    bs = pd.DataFrame()
-    bs['ds'] = df.iloc[:,0]
-    bs['naive'] = df.iloc[:,1].shift(1)  
-    bs['error'] = df.iloc[:,1] - bs['naive']
-    bs['error'] = bs['error'].dropna()
 
-    return bs
+    bs = pd.DataFrame()
+    bs.index = df.index
+    bs['naive'] = df.shift(1)  
+    bs['error'] = df.iloc[:,0] - bs['naive']
+
+    return bs.dropna()
 
 
 
@@ -33,14 +35,10 @@ def forecast_dates(df:pd.DataFrame, horizon:int) -> pd.DataFrame :
         pandas.DataFrame: A data frame with dates continued from df to the forecast horizon
     """
 
-    forecast_df = pd.DataFrame()
-
-    ds = pd.to_datetime(df.iloc[:,0])
-    forecast_df['ds'] = pd.date_range(start = ds.iloc[-1], periods = horizon+1, freq = ds.dt.freq)
+    ds = pd.to_datetime(df.index)
+    forecast_ds = pd.date_range(start = ds[-1], periods = horizon+1, freq = ds.freq)
     
-    forecast_df['ds'] = forecast_df['ds'].shift(-1)
-
-    return forecast_df.dropna()
+    return pd.DataFrame(index=forecast_ds[1:])
 
 
 
@@ -57,7 +55,7 @@ def bs_forecast(df:pd.DataFrame,horizon:int) -> list:
     bs = bs_error(df)
 
     #using the last entry in df to start the sampling
-    forecast_list = [ df.iloc[-1,1] + random.choice(bs['error']) ]
+    forecast_list = [ df.iloc[-1,0] + random.choice(bs['error']) ]
 
     for i in range(1,horizon):
 
@@ -76,44 +74,18 @@ def bs_output(forecast_df:pd.DataFrame, pred_width:float = 95) -> pd.DataFrame :
     Outputs:
         pd.DataFrame: Data frame with forecast dates as the index and the mean, the lower and upper bounds for the prediction interval
     """
-    ds = forecast_df.iloc[:,0]
+
     new_pred_width = (100 - (100-pred_width)/2) / 100
 
     #storing the mean and quantiles for each forecast point in columns
-    #the dates in forecast_df are 'ds' from the forecast_dates function)
-    output_forecast = pd.DataFrame(forecast_df.set_index('ds').mean(axis=1), columns=['forecast'])
-    output_forecast['lower_pi'] = forecast_df.set_index('ds').quantile(1 - new_pred_width, axis=1)
-    output_forecast['upper_pi'] = forecast_df.set_index('ds').quantile(new_pred_width, axis=1)
+    #the dates in forecast_df are 'ds' from the forecast_dates function
+    output_forecast = pd.DataFrame(forecast_df.mean(axis=1), columns=['forecast'])
+    output_forecast['lower_pi'] = forecast_df.quantile(1 - new_pred_width, axis=1)
+    output_forecast['upper_pi'] = forecast_df.quantile(new_pred_width, axis=1)
 
     return output_forecast
 
 
-###Naive functions###
-
-def naive_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:float, pred_width:float = 95) -> pd.DataFrame:
-    """
-    Inputs:
-        forecast_df: Data frame with extended dates and forecasted points
-        horizon: Number of timesteps forecasted into the future
-        forecast_sd: Multi-step standard deviation from the residuals
-        pred_width: width of prediction interval (an integer between 0 and 100)
-        period: Seasonal period
-    Outputs:
-        pd.DataFrame: Data frame with forecast dates as the index and the mean, the lower and upper bounds for the prediction interval
-
-    """
-    output_forecast = forecast_df
-    output_forecast.set_index('ds')
-    new_pred_width = (100 - (100 - pred_width) / 2) / 100 
-
-    #calculating the multiplier for the forecast standard deviation depending on the prediction width
-    pi_mult = norm.ppf(new_pred_width)
-    print(forecast_df.iloc[0,1], pi_mult, forecast_sd[0] )
-    
-    output_forecast['lower_pi'] = [forecast_df.iloc[i,1] - pi_mult * forecast_sd[i] for i in range(horizon)]
-    output_forecast['upper_pi'] = [forecast_df.iloc[i,1] + pi_mult * forecast_sd[i] for i in range(horizon)]
-
-    return output_forecast
 
 def residual_sd(df:pd.DataFrame, extended_forecast:list, no_missing_values:int, no_parameters:int=0) -> float :
     """
@@ -125,21 +97,52 @@ def residual_sd(df:pd.DataFrame, extended_forecast:list, no_missing_values:int, 
     Outputs:
         float: the standard deviation of the residuals
     """
-    square_residuals = [(df.iloc[i,1]-extended_forecast[i]) ** 2 for i in range(len(df))]
+    square_residuals = [(df.iloc[i,0]-extended_forecast[i]) ** 2 for i in range(len(df))]
     residual_sd = np.sqrt(1 / (len(df)-no_missing_values-no_parameters) * sum(square_residuals))
 
     return residual_sd
 
 
 
+def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_width:float = 95) -> pd.DataFrame:
+    """
+    Inputs:
+        forecast_df: Data frame with extended dates and forecasted points
+        horizon: Number of timesteps forecasted into the future
+        forecast_sd: Multi-step standard deviation from the residuals
+        pred_width: width of prediction interval (an integer between 0 and 100)
+        period: Seasonal period
+    Outputs:
+        pd.DataFrame: Data frame with forecast dates as the index and the mean, the lower and upper bounds for the prediction interval
 
-def naive_pi(df:pd.DataFrame, horizon:int, period=1, bootstrap=False, repetitions=100, pred_width = 95.0) -> pd.DataFrame:
+    """
+
+    new_pred_width = (100 - (100 - pred_width) / 2) / 100 
+
+    #calculating the multiplier for the forecast standard deviation depending on the prediction width
+    pi_mult = norm.ppf(new_pred_width)
+    
+    forecast_df['lower_pi'] = [forecast_df.iloc[i,0] - pi_mult * forecast_sd[i] for i in range(horizon)]
+    forecast_df['upper_pi'] = [forecast_df.iloc[i,0] + pi_mult * forecast_sd[i] for i in range(horizon)]
+
+    return forecast_df
+
+
+
+
+
+######################################################################################################################################
+
+
+
+
+
+def naive_pi(df:pd.DataFrame, horizon:int, bootstrap=False, repetitions=100, pred_width = 95.0) -> pd.DataFrame:
    
     """
     Inputs:
-        df: Historical time series data
+        df: Historical time series data with dates as index
         horizon: Number of timesteps forecasted into the future
-        period: Seasonal period
         bootstrap: bootstrap or normal prediction interval
         repetitions: Number of bootstrap repetitions
         pred_width: width of prediction interval interval (an integer between 0 and 100)
@@ -147,119 +150,160 @@ def naive_pi(df:pd.DataFrame, horizon:int, period=1, bootstrap=False, repetition
         pandas.DataFrame: a bootstrapped or normal prediction interval for df
     """
 
-    if period == 1:
+    if bootstrap:
 
-        if bootstrap:
+        ###Regular bootstrap###
 
-            ###Regular bootstrap###
+        #continuing the dates from df
+        forecast_df = forecast_dates(df,horizon)
+        
+        #creating repetitions of the bootstrapped forecasts and storing them
+        for run in range(repetitions):
+            forecast_df[f'run_{run}'] = bs_forecast(df, horizon) 
 
-            #continuing the dates from df
-            forecast_df = forecast_dates(df,horizon)
-            
-            #creating repetitions of the bootstrapped forecasts and storing them
-            for run in range(repetitions):
-                forecast_df[f'forecast_run_{run}'] = bs_forecast(df, horizon) 
+        #calculating the mean and quantiles
+        output_forecast = bs_output(forecast_df,pred_width)
 
-            #calculating the mean and quantiles
-            output_forecast = bs_output(forecast_df,pred_width,bootstrap)
-
-            return output_forecast
-            
-        else:
-
-            ###Naive###
-    
-            #storing the extended dates and forecasted values in a dataframe
-            forecast_df = forecast_dates(df, horizon)
-            forecast_df['forecast'] = naive(df,horizon)
-            extended_forecast = [df.iloc[-1,1]] * len(df)
-
-            #calculating the residuals using the forecast (the last observed value)
-            sd_resiuals = residual_sd(df,extended_forecast,no_missing_values=1)
-            forecast_sd = [sd_resiuals * np.sqrt(h) for h in range(1,horizon+1)]
-            
-            #creating an output forecast with the naive forecast and prediction interval
-            output_forecast = naive_output(forecast_df,horizon,forecast_sd,pred_width)
-            
-            return output_forecast
+        return output_forecast
         
     else:
 
-        if bootstrap:
+        ###Naive###
 
-            ###Seasonal bootstrap###
+        #storing the extended dates and forecasted values in a dataframe
+        forecast_df = forecast_dates(df,horizon)
+        forecast_df['forecast'] = naive(df,horizon)
 
-            return
+        extended_forecast = [df.iloc[-1,0]] * len(df)
+
+        #calculating the residuals using the forecast (the last observed value)
+        sd_resiuals = residual_sd(df,extended_forecast,no_missing_values=1)
+        forecast_sd = [sd_resiuals * np.sqrt(h) for h in range(1,horizon+1)]
         
-        else:
-
-            ###Seasonal naive###
-
-            #calculating the seasonal naive forecast for df
-            forecast_df = forecast_dates(df,horizon)
-            forecast_df['forecast'] = s_naive(df,period,horizon)
-
-            #extending the forecast backwards in time so we can calculate the residuals
-            season = df.iloc[-period:,1].tolist()
-            mult_season = int(len(df) / period) + 1
-            extended_forecast = (season * mult_season)[-len(df) % period: ]
-
-            sd_residuals = residual_sd(df,extended_forecast, no_missing_values=period)
-
-            #using the number of seasons prior to each point to calculate the standard deviation of forecasted points
-            seasons_in_forecast = [np.floor((h-1) / period) for h in range(1,horizon+1)] 
-            forecast_sd = [sd_residuals * np.sqrt(seasons_in_forecast[h-1]+1) for h in range(1,horizon+1)]
-
-            #creating an output forecast with the seasonal naive forecast and prediction interval
-            output_forecast = naive_output(forecast_df,horizon,forecast_sd, pred_width)
-            
-            return output_forecast
+        #creating an output forecast with the naive forecast and prediction interval
+        output_forecast = pi_output(forecast_df,horizon,forecast_sd,pred_width)
+        
+        return output_forecast
+    
 
 
 
-def normal_drift_pi(df,horizon):
+def s_naive_pi(df:pd.DataFrame, horizon:int,  period, bootstrap=False, repetitions=100, pred_width = 95.0) -> pd.DataFrame:
+   
+    """
+    Inputs:
+        df: Historical time series data
+        horizon: Number of timesteps forecasted into the future
+        period: Seasonal period
+        bootstrap: toggle bootstrap or normal prediction interval
+        repetitions: Number of bootstrap repetitions
+        pred_width: width of prediction interval interval (an integer between 0 and 100)
+    Output:
+        pandas.DataFrame: a bootstrapped or normal prediction interval for df
+    """
+
+    if bootstrap:
+
+        ###Seasonal bootstrap###
+
+        #setting up df to pass into stl
+        seasonal_bs = df
+        stl = STL(seasonal_bs.iloc[:,0],period=period).fit()
+
+        #bootstrapping the trend for df
+        trend = stl.trend.to_frame()
+        trend_pi = naive_pi(trend,horizon,bootstrap=True, repetitions=repetitions, pred_width=pred_width)
+
+        #performing seasonal naive on the seasonal data
+        seasonal = stl.seasonal.to_frame()
+        seasonal_pi = s_naive_pi(seasonal, horizon,repetitions=repetitions, period=period)
+
+        return trend_pi + seasonal_pi
+        
+    else:
+
+        ###Seasonal naive###
+
+        #calculating the seasonal naive forecast for df
+        forecast_df = forecast_dates(df,horizon)
+        forecast_df['forecast'] = s_naive(df,period,horizon)
+
+        #extending the forecast backwards in time so we can calculate the residuals
+        season = df.iloc[-period:,0].to_list()
+        mult_season = int(len(df) / period) + 1
+        extended_forecast = (season * mult_season)[-len(df) % period: ]
+        sd_residuals = residual_sd(df,extended_forecast, no_missing_values=period)
+
+        #using the number of seasons prior to each point to calculate the standard deviation of forecasted points
+        seasons_in_forecast = [np.floor((h-1) / period) for h in range(1,horizon+1)] 
+        forecast_sd = [sd_residuals * np.sqrt(seasons_in_forecast[h-1]+1) for h in range(1,horizon+1)]
+
+        #creating an output forecast with the seasonal naive forecast and prediction interval
+        output_forecast = pi_output(forecast_df,horizon,forecast_sd, pred_width)
+        
+        return output_forecast
+
+
+
+def drift_pi(df:pd.DataFrame,horizon:int,pred_width=95.0) -> pd.DataFrame:
 
     """
     Inputs:
-        df (pandas.Series): Historical time series observations (in order)
-        horizon (int): Number of timesteps forecasted into the future
+        df: Historical time series observations
+        horizon: Number of timesteps forecasted into the future
+        period: Seasonal period
     Outputs:
-        list: the 95% prediction interval for eah point forecast
+        pandas.DataFrame: a normal prediction interval for df usuing the drift method
     """
-    forecast = drift_method(df,horizon)
 
-    latest_obs = df.iloc[-1]
-    first_obs = df.iloc[0]
+    #setting up the forecast dataframe
+    forecast_df = forecast_dates(df,horizon)
+    forecast_df['forecast'] = drift_method(df,horizon)
 
-    slope = (latest_obs - first_obs) / (len(df) - 1)
+    #extending the forecast to test the forecast on observed data
+    latest_obs = df.iloc[-1,0]
+    first_obs = df.iloc[0,0]
 
-    #extending the forecast to calculate the residuals
-    extended_forecast = [first_obs + slope * h for h in range(1, len(df) + 1)]
+    slope = (latest_obs - first_obs) / len(df)
 
-    #calculating the residuals missing out the first and last entries as these are the same as these are not forecasted
-    residuals = [df.iloc[i]-extended_forecast[i] for i in range(1,len(df)-1)]
+    extended_forecast = [first_obs + slope * i for i in range(1, len(df) + 1)]
+
+    #calculating the residuals
+    sd_residuals = residual_sd(df,extended_forecast,no_missing_values=2, no_parameters=1)
 
     #calculating the standard deviation for the residuals and the forecasted points
-    residual_sd = np.sqrt(1 / (len(df)-1-2) * sum(residuals ** 2))
+    forecast_sd = [sd_residuals * np.sqrt(i * (1 + i/(len(df)-1))) for i in range(1,horizon+1)]
 
-    forecast_sd = residual_sd * np.sqrt(i * (1+i/(len(df)-1)) for i in range(1,horizon+1))
-
-    #calculating the 95% prediction intervals for each point
-    pred_int = [[forecast[i] - 1.96 * forecast_sd[i], forecast[i] + 1.96 * forecast_sd]
-                for i in range(horizon)]
+    #outputting the result
+    output_forecast = pi_output(forecast_df,horizon,forecast_sd,pred_width)
     
-    return pred_int
+    return output_forecast
 
-def bootstrap_naive(df,horizon,width):
+
+
+def mean_pi(df:pd.DataFrame, horizon=int, pred_width=95.0) -> pd.DataFrame:
+
     """
     Inputs:
-        df (pandas.Series): Historical time series observations (in order)
-        horizon (int): Number of timesteps forecasted into the future
+        df: Historical time series observations
+        horizon: Number of timesteps forecasted into the future
+        period: Seasonal period
     Outputs:
-        list: Bootstrapped prediction interval, of the width secified
+        pandas.DataFrame: a normal prediction interval for df usuing the mean method
     """
-    df['naive'] = df.iloc[:,1].shift(1)  
-    df['errors'] = df.iloc[:,1] - df['naive']
-    forecast_df = pd.DataFrame()
 
-    return
+    #setting up the forecast dataframe
+    forecast_df = forecast_dates(df,horizon)
+    forecast_df['forecast'] = mean_method(df,horizon)
+
+    #extending the forecast back in time to test against observed data
+    extended_forecast = [forecast_df['forecast'].iloc[0]] * len(df)
+
+    #calculating the standard deviation of the residuals and the forecasted points
+    sd_residuls = residual_sd(df,extended_forecast, no_missing_values=2, no_parameters=1)
+    forecast_sd = [sd_residuls * np.sqrt(1 + 1/len(df))] * horizon
+
+    #outputting the result
+    output_forecast = pi_output(forecast_df,horizon,forecast_sd, pred_width)
+
+    return output_forecast

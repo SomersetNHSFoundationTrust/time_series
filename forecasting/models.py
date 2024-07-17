@@ -2,10 +2,11 @@
 
 # Example
 import pandas as pd
+import numpy as np
 from prophet import Prophet
 
-
 def prophet_forecast(df, horizon, **kwargs):
+    
     """
     :param df: Pandas.DataFrame - historical time series data.
     :param horizon: int - Number of time steps to forecast.
@@ -20,7 +21,18 @@ def prophet_forecast(df, horizon, **kwargs):
     forecast = model.predict(future)
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
-def s_naive(df, period, forecast_horizon):
+def naive(df, horizon):
+    """
+    Inputs:
+        df (pandas.Series): Historical time series observations (in order)
+        horizon (int): Number of timesteps forecasted into the future
+    Outputs:
+        list: Forecasted time series
+    """
+    most_recent_value = df.iloc[-1,0]
+    return [most_recent_value] * horizon
+
+def s_naive(df, period, horizon):
     """
     Inputs:
         df (pandas.Series): Historical time series observations (in order)
@@ -30,7 +42,7 @@ def s_naive(df, period, forecast_horizon):
         list: Forecasted time series
     """
 
-    most_recent_seasonal = df[-period:].to_list()
+    most_recent_seasonal = df.iloc[-period:,0].to_list()
 
     # We now need to make the forecast
     # Number of times to multiply the list to ensure we meet forecast horizon
@@ -41,20 +53,32 @@ def s_naive(df, period, forecast_horizon):
 def drift_method(df, horizon):
     """
     Inputs:
-        ts (pandas.Series): Historical time series observations (in order)
+        df (pandas.Series): Historical time series observations (in order)
         horizon (int): Number of timesteps forecasted into the future
     Outputs:
         list: Forecasted time series
     """
 
-    latest_obs = df.iloc[-1]
-    first_obs = df.iloc[0]
+    latest_obs = df.iloc[-1,0]
+    first_obs = df.iloc[0,0]
 
-    slope = (latest_obs - first_obs) / (len(ts) - 1)
+    slope = (latest_obs - first_obs) / (len(df) - 1)
 
     forecast_list = [latest_obs + slope * h for h in range(1, horizon + 1)]
 
     return forecast_list
 
+def mean_method(df,horizon):
+    """
+    Inputs:
+        df (pandas.Series): Historical time series observations (in order)
+        horizon (int): Number of timesteps forecasted into the future
+    Outputs:
+        list: Forecasted time series
+    """
+    lastest_obs = df.iloc[-1,0]
+    first_obs = df.iloc[0,0]
 
+    mean = (lastest_obs - first_obs) / len(df)
 
+    return [mean] * horizon
