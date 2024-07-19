@@ -8,6 +8,7 @@ from statsmodels.tsa.seasonal import STL
 
 
 
+
 def bs_error(df:pd.DataFrame) -> pd.DataFrame:
 
     """
