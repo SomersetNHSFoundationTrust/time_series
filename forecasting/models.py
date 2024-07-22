@@ -7,13 +7,16 @@ from prophet import Prophet
 from statsmodels.tsa.api import ETSModel
 
 
-def prophet_forecast(df, horizon, **kwargs):
+def prophet_forecast(df:pd.DataFrame, horizon:int, **kwargs) -> pd.DataFrame:
     
     """
-    :param df: Pandas.DataFrame - historical time series data.
-    :param horizon: int - Number of time steps to forecast.
-    :param kwargs: Facebook Prophet keyword arguments.
-    :return: Pandas.DataFrame - Forecast.
+    Inputs:
+        :param df: pandas.DataFrame - Historical time series data with date-time index
+        :param horizon: int - Number of time steps to forecast.
+        :param kwargs - Facebook Prophet keyword arguments.
+        :return: Pandas.DataFrame - Forecast.
+    Outputs:
+        pd.DataFrame: 
     """
 
     model = Prophet(**kwargs)
@@ -23,25 +26,25 @@ def prophet_forecast(df, horizon, **kwargs):
     forecast = model.predict(future)
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
-def naive(df, horizon):
+def naive(df:pd.DataFrame, horizon:int) -> list:
     """
     Inputs:
-        df (pandas.Series): Historical time series observations (in order)
-        horizon (int): Number of timesteps forecasted into the future
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
-        list: Forecasted time series
+        list: Forecasted time series with naive method
     """
     most_recent_value = df.iloc[-1,0]
     return [most_recent_value] * horizon
 
-def s_naive(df, period, horizon):
+def s_naive(df:pd.DataFrame, period:int, horizon:int) -> list:
     """
     Inputs:
-        df (pandas.Series): Historical time series observations (in order)
-        period (int): Seasonal period (i.e., 12 for monthly data)
-        horizon (int): Number of timesteps forecasted into the future
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param period: int - Seasonal period
+        :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
-        list: Forecasted time series
+        list: Forecasted time series with seasonal naive method
     """
 
     most_recent_seasonal = df.iloc[-period:,0].to_list()
@@ -52,13 +55,13 @@ def s_naive(df, period, horizon):
 
     return (most_recent_seasonal * mult_list)[:horizon]
 
-def drift_method(df, horizon):
+def drift_method(df:pd.DataFrame, horizon:int) -> list:
     """
     Inputs:
-        df (pandas.Series): Historical time series observations (in order)
-        horizon (int): Number of timesteps forecasted into the future
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
-        list: Forecasted time series
+        list: Forecasted time series with drift method
     """
 
     latest_obs = df.iloc[-1,0]
@@ -70,37 +73,41 @@ def drift_method(df, horizon):
 
     return forecast_list
 
-def mean_method(df,horizon):
+def mean_method(df:pd.DataFrame,horizon:int) -> list:
     """
     Inputs:
-        df (pandas.Series): Historical time series observations (in order)
-        horizon (int): Number of timesteps forecasted into the future
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
-        list: Forecasted time series
+        list: Forecasted time series with mean method
     """
-    lastest_obs = df.iloc[-1,0]
-    first_obs = df.iloc[0,0]
+   
 
-    mean = (lastest_obs - first_obs) / len(df)
+    mean = sum(df.iloc[:,0]) / len(df)
 
     return [mean] * horizon
 
-def auto_params(df,periods=1):
+def ETS_forecast(df:pd.DataFrame,target_col = None, period:int=1):
+
     """
     Inputs:
-        df: Historical time series data
+        :param df: pd.DataFrame - Historical time series data
+        :param target_col: Any - column to forecast
+        :param period: int - seasonal period
     Ouputs:
         list: the automated selection of parameters for simple, double and triple exponential smoothing, alpha, beta and gamma
     """
 
-    if periods == 1:
-        ets_model = ETSModel(df[:,0]).fit()
+    if target_col is None:
+
+        ets_model = ETSModel(df[:,0],seasonal_periods=period).fit()
         alpha = ets_model.smoothing_level()
         beta = ets_model.smoothing_trend()
         gamma = ets_model.smoothing_seasonal()
     
     else:
-        ets_model = ETSModel(df[:,0],seasonal_periods=period)
+    
+        ets_model = ETSModel(df[target_col],seasonal_periods=period).fit()
         alpha = ets_model.smoothing_level()
         beta = ets_model.smoothing_trend()
         gamma = ets_model.smoothing_seasonal()
@@ -112,8 +119,8 @@ def auto_params(df,periods=1):
 def SES_iterator(df,alpha):
     """
     Inputs:
-        df (pandas.DataFrame): Historical time series data
-        alpha (float): 0<=alpha<=1 the smoothing parameter 
+        :param df: pandas.DataFrame - Historical time series data
+        :param alpha: float - 0<= alpha <=1 the smoothing parameter 
     Outputs:
         list : one step forecast for observed data
     """
@@ -131,21 +138,21 @@ def SES_iterator(df,alpha):
 def SES(df,alpha):
     """
     Inputs:
-        df (pandas.DataFrame): Historical time series data
-        alpha (float): 0<=alpha<=1 the smoothing parameter 
+        :param df: pandas.DataFrame - Historical time series data
+       :param  alpha: float - 0<=alpha<=1 the smoothing parameter 
     Outputs:
-        list : one step forecast for observed data
+        list: one step forecast for observed data
     """
     return SES_iterator(df,alpha)[-1]
 
 def holt_model(df,alpha,beta):
     """
     Inputs:
-        df (pandas.DataFrame): Historical time series data
-        alpha (float): 0<=alpha<=1 the parameter for the level
-        beta (float): 0<=beta<=1 the parameter for the trend
+        :param df pandas.DataFrame - Historical time series data
+        :param alpha float - 0<=alpha<=1 the parameter for the level
+        :param beta: float - 0<=beta<=1 the parameter for the trend
     Outputs:
-        list : one step forecast for observed data
+        list: one step forecast for observed data
     """
 
     #estimating the first level and trend
