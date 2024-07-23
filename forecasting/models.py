@@ -4,7 +4,8 @@
 import pandas as pd
 import numpy as np
 from prophet import Prophet
-from statsmodels.tsa.api import ETSModel
+from sktime.forecasting.arima import AutoARIMA
+from sktime.forecasting.ets import AutoETS
 
 
 def prophet_forecast(df:pd.DataFrame, horizon:int, **kwargs) -> pd.DataFrame:
@@ -87,88 +88,84 @@ def mean_method(df:pd.DataFrame,horizon:int) -> list:
 
     return [mean] * horizon
 
-def ETS_forecast(df:pd.DataFrame,target_col = None, period:int=1):
+def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_width:float=95,**AutoETS_kwargs) -> pd.DataFrame:
+
+    #add pred_width
+    #fix dates
 
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data
-        :param target_col: Any - column to forecast
+        :param target_col: str - column to forecast
+        :param horizon: int - Number of timesteps forecasted into the future
         :param period: int - seasonal period
+        :param pred_width: float - 0 <= pred_width < 100 width of prediction interval
+        :param **AutoETS_kwargs - keyword arguments for the sktime AutoETS() function
     Ouputs:
-        list: the automated selection of parameters for simple, double and triple exponential smoothing, alpha, beta and gamma
+        pd.DataFrame: forecast with exponential smmothing with auto-selected parameters
     """
 
-    if target_col is None:
+    df.index=pd.to_datetime(df.index)
+    df = df.asfreq(df.index.freq)
 
-        ets_model = ETSModel(df[:,0],seasonal_periods=period).fit()
-        alpha = ets_model.smoothing_level()
-        beta = ets_model.smoothing_trend()
-        gamma = ets_model.smoothing_seasonal()
-    
-    else:
-    
-        ets_model = ETSModel(df[target_col],seasonal_periods=period).fit()
-        alpha = ets_model.smoothing_level()
-        beta = ets_model.smoothing_trend()
-        gamma = ets_model.smoothing_seasonal()
+    fh = [i for i in range(1,horizon+1)]
 
-    return [alpha, beta, gamma]
+    forecaster = AutoETS(sp=period,auto=True,**AutoETS_kwargs).fit(df[target_col])
 
+    forecast = forecaster.predict(fh=fh)
+    pred_int= forecaster.predict_interval(fh=fh,coverage=pred_width/100)
 
+    forecast_ds = pd.date_range(start = df.index[-1], periods = horizon+1, freq = df.index.freq)
 
-def SES_iterator(df,alpha):
-    """
-    Inputs:
-        :param df: pandas.DataFrame - Historical time series data
-        :param alpha: float - 0<= alpha <=1 the smoothing parameter 
-    Outputs:
-        list : one step forecast for observed data
-    """
-    #using thr forst observed value for the first fitted value
-    ses_fit = [df.iloc[0,0]]
+    output_forecast = pd.DataFrame(index = forecast_ds[1:])
+    output_forecast['forecast'] = forecast
+    output_forecast[['lower_pi', 'upper_pi']] = pred_int[pred_width/100][['lower', 'upper']]
 
-    #iterating through the data
-    for step in range(1,len(df)):
-        forecast = alpha * df.iloc[step,0] + (1-alpha) * ses_fit[step-1]
-        ses_fit.append(forecast)
-
-    return ses_fit
+    return output_forecast
 
 
-def SES(df,alpha):
+   
+
+def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pred_width:float = 95, **AutoARIMA_kwargs) -> pd.DataFrame:
     """
     Inputs:
-        :param df: pandas.DataFrame - Historical time series data
-       :param  alpha: float - 0<=alpha<=1 the smoothing parameter 
-    Outputs:
-        list: one step forecast for observed data
+        :param df: pd.DataFrame - Historical time series data
+        :param target_col: str - column to forecast
+        :param horizon: int - Number of timesteps forecasted into the future
+        :param period: int - seasonal period
+        :param pred_width: float - 0 <= pred_width < 100 width of prediction interval
+        :param **AutoARIMA_kwargs - keyword arguments for the sktime AutoARIMA() function
+    Ouputs:
+        pd.DataFrame: forecast with ARIMA with auto-selected parameters
     """
-    return SES_iterator(df,alpha)[-1]
+    df.index = pd.to_datetime(df.index)
 
-def holt_model(df,alpha,beta):
-    """
-    Inputs:
-        :param df pandas.DataFrame - Historical time series data
-        :param alpha float - 0<=alpha<=1 the parameter for the level
-        :param beta: float - 0<=beta<=1 the parameter for the trend
-    Outputs:
-        list: one step forecast for observed data
-    """
+    forecaster = AutoARIMA(sp = period,**AutoARIMA_kwargs,suppress_warnings=True).fit(df[target_col])
 
-    #estimating the first level and trend
-    level_component = [df.index[0,0]]
-    trend_component = [df.iloc[1,0] - df.iloc[0,0]]
-    fitted_model = []
+    fh = [i for i in range(1,horizon+1)]
 
-    for y in df.iloc[1:,0]:
-        level = alpha * y + (1 - alpha) * (level_component[-1] + trend_component[-1])
-        trend = (beta * (level - level_component[-1]) + (1 - beta) * trend_component[-1])
+    forecast = forecaster.predict(fh=fh)
+    pred_int = forecaster.predict_interval(fh=fh,coverage=pred_width / 100)
 
-        # Using these values to create a one-step forecast
-        forecast = level + trend
+    forecast_ds = pd.date_range(start = df.index[-1], periods = horizon+1, freq = df.index.freq)
 
-        level_component.append(level)
-        trend_component.append(trend)
-        fitted_model.append(forecast)
+    output_forecast = pd.DataFrame(index = forecast_ds[1:])
+    output_forecast['forecast'] = forecast
+    output_forecast[['lower_pi', 'upper_pi']] = pred_int[pred_width/100][['lower', 'upper']]
 
-    return fitted_model
+    return output_forecast
+
+df = pd.read_csv('https://raw.githubusercontent.com/facebook/prophet/main/examples/example_wp_log_peyton_manning.csv',index_col='ds')
+forecast = ETS_forecast(df,'y',30,pred_width=80)
+
+print(forecast)
+
+"""from sktime.datasets import load_airline
+
+df = load_airline()
+fh = [i for i in range(1,31)]
+forecaster = AutoARIMA(sp=12).fit(df)
+pred_int= forecaster.predict_interval(fh=fh,coverage=80/100)
+
+forecast = forecaster.predict(fh=fh)
+print(pred_int,forecast)"""

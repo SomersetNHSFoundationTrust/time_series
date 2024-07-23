@@ -1,11 +1,26 @@
 import pandas as pd
 import numpy as np
-from models import *
+from models import naive, s_naive, drift_method, mean_method
 import random
 from scipy.stats import norm
 from statsmodels.tsa.seasonal import STL
 
 
+
+
+def forecast_dates(df:pd.DataFrame, horizon:int) -> pd.DataFrame :
+    """
+    Inputs:
+        :param df: pd.DataFrame - Historical time series data with date-time index
+        :param horizon: int - Number of timesteps forecasted into the future
+    Ouputs:
+        pandas.DataFrame: A data frame with dates continued from df to the forecast horizon
+    """
+
+    ds = pd.to_datetime(df.index)
+    forecast_ds = pd.date_range(start = ds[-1], periods = horizon+1, freq = ds.freq)
+    
+    return pd.DataFrame(index=forecast_ds[1:])
 
 
 
@@ -69,20 +84,6 @@ def bs_mean_error(df:pd.DataFrame) -> pd.Series:
     return bs['error'].dropna()
 
 
-
-def forecast_dates(df:pd.DataFrame, horizon:int) -> pd.DataFrame :
-    """
-    Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param horizon: int - Number of timesteps forecasted into the future
-    Ouputs:
-        pandas.DataFrame: A data frame with dates continued from df to the forecast horizon
-    """
-
-    ds = pd.to_datetime(df.index)
-    forecast_ds = pd.date_range(start = ds[-1], periods = horizon+1, freq = ds.freq)
-    
-    return pd.DataFrame(index=forecast_ds[1:])
 
 
 
@@ -286,14 +287,18 @@ def s_naive_pi(df:pd.DataFrame, horizon:int,  period:int, bootstrap=False, repet
 
 def drift_pi(df:pd.DataFrame,horizon:int,bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
 
+    
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series observations
+        :param df: pd.DataFrame - Historical time series data
         :param horizon: int - Number of timesteps forecasted into the future
-        :param period: int - Seasonal period
-    Outputs:
-        pandas.DataFrame: a normal prediction interval for df usuing the drift method
+        :param bootstrap: bool - toggle bootstrap or normal prediction interval
+        :param repetitions: int - Number of bootstrap repetitions
+        :param pred_width: float - 0 <= pred_width < 100 width of prediction interval
+    Output:
+        pandas.DataFrame: a bootstrapped or normal prediction interval for df
     """
+
     if bootstrap:
         forecast_df = forecast_dates(df,horizon)
 
@@ -333,14 +338,18 @@ def drift_pi(df:pd.DataFrame,horizon:int,bootstrap:bool = False, repetitions:int
 
 def mean_pi(df:pd.DataFrame, horizon=int, bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
 
+    
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series observations
+        :param df: pd.DataFrame - Historical time series data
         :param horizon: int - Number of timesteps forecasted into the future
-        :param period: int - Seasonal period
-    Outputs:
-        pandas.DataFrame: a normal prediction interval for df usuing the mean method
+        :param bootstrap: bool - toggle bootstrap or normal prediction interval
+        :param repetitions: int - Number of bootstrap repetitions
+        :param pred_width: float - 0 <= pred_width < 100 width of prediction interval
+    Output:
+        pandas.DataFrame: a bootstrapped or normal prediction interval for df
     """
+    
     if bootstrap:
 
         forecast_df = forecast_dates(df,horizon)
@@ -391,3 +400,37 @@ seasonal_pi = s_naive_pi(seasonal, horizon,repetitions=repetitions, period=perio
 return trend_pi + seasonal_pi
 
 """
+
+def STL_pi(df:pd.DataFrame, horizon:int, method:{'naive','seasonal_naive', 'drift', 'mean'}, period:int=1, bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
+    """
+    Inputs:
+        :param df: pd.DataFrame - Historical time series data
+        :param method: str - specifying the method used to forecast the trend
+        :param horizon: int - Number of timesteps forecasted into the future
+        :param period: int - seasonal period
+        :param bootstrap: bool - toggle bootstrap or normal prediction interval
+        :param repetitions: int - Number of bootstrap repetitions
+        :param pred_width: float - 0 <= pred_width < 100 width of prediction interval
+    Output:
+        pandas.DataFrame: a forecast for the trend using the method specified
+    """
+
+    stl = STL(df.iloc[:,0], period=period).fit()
+    trend = stl.trend()
+
+    if method == 'naive':
+        output_forecast = naive_pi(trend,horizon,bootstrap,repetitions,pred_width)
+    
+    elif method == 'seasonal_naive':
+        output_forecast = s_naive_pi(trend,horizon,period,bootstrap,repetitions,pred_width)
+
+    elif method == 'drift':
+        output_forecast = drift_pi(trend, horizon,bootstrap,repetitions,pred_width)
+
+    elif method == 'mean':
+        output_forecast = mean_pi(trend,horizon,bootstrap,repetitions,pred_width)
+
+    return output_forecast
+
+
+    
