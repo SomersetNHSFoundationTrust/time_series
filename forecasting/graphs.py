@@ -6,6 +6,7 @@ import pandas as pd
 from scipy.stats import normaltest
 from statsmodels.tsa.seasonal import STL
 import numpy as np
+from prediction_intervals import forecast_dates, bs_naive_error, bs_drift_error, bs_mean_error, bs_forecast, bs_output
 
 
 
@@ -235,7 +236,7 @@ def decomp(df:pd.DataFrame, target_col:str, period:int, **STLkwargs) -> tuple:
 
 
 
-def decomp_graph(df:pd.DataFrame, target_col:str, period:int, **STLkwargs) -> go.Figure:
+def decomp_plot(df:pd.DataFrame, target_col:str, period:int, **STLkwargs) -> go.Figure:
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index
@@ -376,18 +377,21 @@ def data_with_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataF
     """
     
     fig=go.Figure()
+
     fig.add_trace(go.Scatter(x=df.index, y=df[target_col],line=dict(color='#00789c')))
 
     fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['forecast'],
                             name='Forecast',
-                            line = dict(color='#00789c')))
+                            line = dict(color='#d1495b')))
     
     fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['lower_pi'],
                             name = 'Prediction interval bounds',
-                            line = dict(color='#9db2bf')))
+                            line = dict(color='#00789c')))
     
     fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['upper_pi'],
-                            line = dict(color='#9db2bf'),
+                            line = dict(color='#00789c'),
+                            fill = 'tonexty',
+                            fillcolor='rgba(0,120,156,0.3)',
                             showlegend=False))
 
     fig.update_xaxes(title_text='Date')
@@ -398,18 +402,89 @@ def data_with_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataF
     return fig
 
 
-def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, method:str, repetitions:int) -> go.Figure:
+def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str,repetitions:int,period:int=1, pred_width:float = 95,show_simulations:bool=False) -> go.Figure:
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index
         :param target_col: str - The column of df the observed data is located
-        :param model: str - one of {'naive','seasonal naive','drift','mean'}, the method to simulate forecasts
+        :param horizon: int - number of timesteps forecasted into the future
+        :param model: str - one of {'naive','seasonal naive','drift','mean'}, the method to simulate the forecast
         :param repetitions: int - Number of bootstrap repetitions
+        :param period: int - Seasonal period
+        :param pred_width : float - 0 <= pred_width < 100 width of prediction interval
+        :param show_simulations: bool - Toggle whether to see the bootstraped simulations
     Ouputs:
         go.Figure - A plot of all simulated bootstraped forecasts and the prediction interval
     """
 
+    forecast_df = forecast_dates(df,horizon)
+
+    if method == 'naive':
+        naive_error = bs_naive_error(df,target_col)
+
+        for run in range(repetitions):
+            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,naive_error)
+
+    elif method == 'seasonal naive':
+        s_naive_error = bs_naive_error(df,target_col,period)
+
+        for run in range(repetitions):
+            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,s_naive_error)
+
+    elif method == 'drift':
+        drift_error = bs_drift_error(df,target_col)
+
+        for run in range(repetitions):
+            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,drift_error)
+
+    elif method == 'mean':
+        mean_error = bs_mean_error(df,target_col)
+
+        for run in range(repetitions):
+            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,mean_error)
+
+    pred_int = bs_output(forecast_df, pred_width)
+
+    fig = go.Figure()
+
+    #the observed data
+    fig.add_trace(go.Scatter(x=df.index, y=df[target_col]),
+                  showlegend=False)
+
+    #the mean of the simulations
+    fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['forecast'],
+                             name = 'Mean of bootstrapped forecasts',
+                             line=dict(color='#d1495b')))
+    
+    #the prediction interval bounds
+    fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['upper_pi'],
+                             name = 'Prediction interval bounds',
+                             line=dict('#00789c')))
+    
+    fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['lower_pi'],
+                             line=dict(color='#00789c'),
+                            showlegend=False))
+    
+
+    if show_simulations:
+
+        for run in range(repetitions):
+
+            fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df[f'run {run}'],
+                                     showlegend=False,
+                                     line=dict(color='#9db2bf')))
 
 
+    fig.update_xaxes(title_text='Date')
+    fig.update_yaxes(title_text=target_col)
 
-
+    fig.update_layout(height=600,
+                      title_text='Bootstrapped precition interval',
+                      template='plotly_white',
+                      legend=dict(yanchor="top",
+                                orientation="h",
+                                y=-0.2,
+                                xanchor="centre",
+                                x=-0.5))
+    
+    return fig
