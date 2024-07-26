@@ -24,28 +24,30 @@ def forecast_dates(df:pd.DataFrame, horizon:int) -> pd.DataFrame :
 
 
 
-def bs_naive_error(df:pd.DataFrame,period:int = 1) -> pd.Series:
+def bs_naive_error(df:pd.DataFrame,target_col:str, period:int = 1) -> pd.Series:
 
     """
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index
+        :param target_col: str - column with historical data
         :param period: int - number of periods to shift the error by (seasonal period)
     Ouputs:
         pandas.DataFrame: dataframe with errors from shifted observations to sample from
     """
 
     bs = pd.DataFrame(index = df.index)
-    bs['naive'] = df.shift(period)  
-    bs['error'] = df.iloc[:,0] - bs['naive']
+    bs['naive'] = df[target_col].shift(period)  
+    bs['error'] = df.values - bs['naive']
 
     return bs['error'].dropna()
 
 
 
-def bs_drift_error(df:pd.DataFrame) -> pd.Series:
+def bs_drift_error(df:pd.DataFrame,target_col:str) -> pd.Series:
     """
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index
+        :param target_col: str - column with historical data
     Ouputs:
         pandas.DataFrame: dataframe with errors from drift one-step forecasts
     """
@@ -53,28 +55,29 @@ def bs_drift_error(df:pd.DataFrame) -> pd.Series:
     fitted_values = [np.nan, np.nan]
 
     for i in range(2,len(df)):
-        forecast = drift_method(df.iloc[i],horizon=1)
+        forecast = drift_method(df[target_col][:i],horizon=1)
         fitted_values.append(forecast[0])
     
     bs = pd.DataFrame(index = df.index)
     bs['slope'] = fitted_values
-    bs['error'] = bs['slope'] - df.iloc[:,0]
+    bs['error'] = bs['slope'] - df.values
 
     return bs['error'].dropna()
 
 
 
-def bs_mean_error(df:pd.DataFrame) -> pd.Series:
+def bs_mean_error(df:pd.DataFrame,target_col:str) -> pd.Series:
     """
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index
+        :param target_col: str - column with historical data
     Ouputs:
         pandas.DataFrame: dataframe with errors from mean one-step forecasts
     """
     fitted_values = [np.nan]
 
     for i in range(1,len(df)):
-        forecast = mean_method(df.iloc[i],horizon=1)
+        forecast = mean_method(df[target_col][:i],horizon=1)
         fitted_values.append(forecast[0])
 
     bs = pd.DataFrame(index = df.index)
@@ -87,11 +90,12 @@ def bs_mean_error(df:pd.DataFrame) -> pd.Series:
 
 
 
-def bs_forecast(df:pd.DataFrame,horizon:int,one_step_fcst_errors:pd.Series) -> list:
+def bs_forecast(df:pd.DataFrame,target_col:str,horizon:int,one_step_fcst_errors:pd.Series) -> list:
 
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index
+        :param target_col: str - column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
         :param one_step_fcsts: pd.Series - The errors of one-step forecasts to data to randomly sample from
     Ouputs:
@@ -99,7 +103,7 @@ def bs_forecast(df:pd.DataFrame,horizon:int,one_step_fcst_errors:pd.Series) -> l
     """
 
     #using the last entry in df to start the sampling
-    forecast_list = [ df.iloc[-1,0] + random.choice(one_step_fcst_errors) ]
+    forecast_list = [ df[target_col][-1] + random.choice(one_step_fcst_errors) ]
 
     for _ in range(1,horizon):
 
@@ -131,17 +135,18 @@ def bs_output(forecast_df:pd.DataFrame, pred_width:float = 95) -> pd.DataFrame :
 
 
 
-def residual_sd(df:pd.DataFrame, extended_forecast:list, no_missing_values:int, no_parameters:int=0) -> float :
+def residual_sd(df:pd.DataFrame,target_col:str, extended_forecast:list, no_missing_values:int, no_parameters:int=0) -> float :
     """
     Inputs: 
         :param df: pd.DataFrame - Time series to calculate residuals from
+        :param target_col: str - column with historical data
         :param extended forecast: list - forecast extended back in time to compare df to
         :param no_ missing_values: int - number of values that are needed to calculate the forecast
         :param no_parameters: int - number of parameters used to calculate the forecast
     Outputs:
         float: the standard deviation of the residuals
     """
-    square_residuals = [(df.iloc[i,0]-extended_forecast[i]) ** 2 for i in range(len(df))]
+    square_residuals = [(df[target_col][i]-extended_forecast[i]) ** 2 for i in range(len(df))]
     residual_sd = np.sqrt(1 / (len(df)-no_missing_values-no_parameters) * sum(square_residuals))
 
     return residual_sd
@@ -166,8 +171,8 @@ def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_widt
     #calculating the multiplier for the forecast standard deviation depending on the prediction width
     pi_mult = norm.ppf(new_pred_width)
     
-    forecast_df['lower_pi'] = [forecast_df.iloc[i,0] - pi_mult * forecast_sd[i] for i in range(horizon)]
-    forecast_df['upper_pi'] = [forecast_df.iloc[i,0] + pi_mult * forecast_sd[i] for i in range(horizon)]
+    forecast_df['lower_pi'] = [forecast_df.values[i] - pi_mult * forecast_sd[i] for i in range(horizon)]
+    forecast_df['upper_pi'] = [forecast_df.values[i] + pi_mult * forecast_sd[i] for i in range(horizon)]
 
     return forecast_df
 
@@ -181,11 +186,12 @@ def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_widt
 
 
 
-def naive_pi(df:pd.DataFrame, horizon:int, bootstrap=False, repetitions=100, pred_width = 95.0) -> pd.DataFrame:
+def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, bootstrap=False, repetitions=100, pred_width = 95.0) -> pd.DataFrame:
    
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with dates as index
+        :param target_col: str - column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
         :param bootstrap: bool - bootstrap or normal prediction interval
         :param repetitions: int - Number of bootstrap repetitions
@@ -200,11 +206,11 @@ def naive_pi(df:pd.DataFrame, horizon:int, bootstrap=False, repetitions=100, pre
 
         #continuing the dates from df
         forecast_df = forecast_dates(df,horizon)
-        naive_error = bs_naive_error(df)
+        naive_error = bs_naive_error(df,target_col)
         
         #creating repetitions of the bootstrapped forecasts and storing them
         for run in range(repetitions):
-            forecast_df[f'run_{run}'] = bs_forecast(df, horizon, naive_error) 
+            forecast_df[f'run_{run}'] = bs_forecast(df, target_col, horizon, naive_error) 
 
         #calculating the mean and quantiles
         output_forecast = bs_output(forecast_df,pred_width)
@@ -219,10 +225,10 @@ def naive_pi(df:pd.DataFrame, horizon:int, bootstrap=False, repetitions=100, pre
         forecast_df = forecast_dates(df,horizon)
         forecast_df['forecast'] = naive(df,horizon)
 
-        extended_forecast = [df.iloc[-1,0]] * len(df)
+        extended_forecast = [df[target_col][-1]] * len(df)
 
         #calculating the residuals using the forecast (the last observed value)
-        sd_resiuals = residual_sd(df,extended_forecast,no_missing_values=1)
+        sd_resiuals = residual_sd(df,target_col,extended_forecast,no_missing_values=1)
         forecast_sd = [sd_resiuals * np.sqrt(h) for h in range(1,horizon+1)]
         
         #creating an output forecast with the naive forecast and prediction interval
@@ -233,11 +239,12 @@ def naive_pi(df:pd.DataFrame, horizon:int, bootstrap=False, repetitions=100, pre
 
 
 
-def s_naive_pi(df:pd.DataFrame, horizon:int,  period:int, bootstrap=False, repetitions=100, pred_width = 95.0) -> pd.DataFrame:
+def s_naive_pi(df:pd.DataFrame,target_col:str, horizon:int,  period:int, bootstrap=False, repetitions=100, pred_width = 95.0) -> pd.DataFrame:
    
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data
+        :param target_col: str - column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
         :param period: int - Seasonal period
         :param bootstrap: bool - toggle bootstrap or normal prediction interval
@@ -251,10 +258,10 @@ def s_naive_pi(df:pd.DataFrame, horizon:int,  period:int, bootstrap=False, repet
 
         forecast_df = forecast_dates(df,horizon)
 
-        naive_errors = bs_naive_error(df,period)
+        naive_errors = bs_naive_error(df,target_col,period)
 
         for run in range(repetitions):
-            forecast_df[f'run_{run}'] = bs_forecast(df,horizon,naive_errors)
+            forecast_df[f'run_{run}'] = bs_forecast(df,target_col,horizon,naive_errors)
 
         output_forecast = bs_output(forecast_df,pred_width)
 
@@ -269,10 +276,10 @@ def s_naive_pi(df:pd.DataFrame, horizon:int,  period:int, bootstrap=False, repet
         forecast_df['forecast'] = s_naive(df,period,horizon)
 
         #extending the forecast backwards in time so we can calculate the residuals
-        season = df.iloc[-period:,0].to_list()
+        season = df.values[-period:].to_list()
         mult_season = int(len(df) / period) + 1
         extended_forecast = (season * mult_season)[-len(df) % period: ]
-        sd_residuals = residual_sd(df,extended_forecast, no_missing_values=period)
+        sd_residuals = residual_sd(df,target_col,extended_forecast, no_missing_values=period)
 
         #using the number of seasons prior to each point to calculate the standard deviation of forecasted points
         seasons_in_forecast = [np.floor((h-1) / period) for h in range(1,horizon+1)] 
@@ -285,12 +292,13 @@ def s_naive_pi(df:pd.DataFrame, horizon:int,  period:int, bootstrap=False, repet
 
 
 
-def drift_pi(df:pd.DataFrame,horizon:int,bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
+def drift_pi(df:pd.DataFrame,target_col:str,horizon:int,bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
 
     
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data
+        :param target_col: str - column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
         :param bootstrap: bool - toggle bootstrap or normal prediction interval
         :param repetitions: int - Number of bootstrap repetitions
@@ -302,10 +310,10 @@ def drift_pi(df:pd.DataFrame,horizon:int,bootstrap:bool = False, repetitions:int
     if bootstrap:
         forecast_df = forecast_dates(df,horizon)
 
-        drift_errors = bs_drift_error(df)
+        drift_errors = bs_drift_error(df,target_col)
 
         for run in range(repetitions):
-            forecast_df[f'run_{run}'] = bs_forecast(df,horizon,drift_errors)
+            forecast_df[f'run_{run}'] = bs_forecast(df,target_col,horizon,drift_errors)
         
         output_forecast = bs_output(forecast_df, pred_width)
 
@@ -316,15 +324,15 @@ def drift_pi(df:pd.DataFrame,horizon:int,bootstrap:bool = False, repetitions:int
         forecast_df['forecast'] = drift_method(df,horizon)
 
         #extending the forecast to test the forecast on observed data
-        latest_obs = df.iloc[-1,0]
-        first_obs = df.iloc[0,0]
+        latest_obs = df[target_col][-1]
+        first_obs = df[target_col][0]
 
         slope = (latest_obs - first_obs) / len(df)
 
         extended_forecast = [first_obs + slope * i for i in range(1, len(df) + 1)]
 
         #calculating the residuals
-        sd_residuals = residual_sd(df,extended_forecast,no_missing_values=2, no_parameters=1)
+        sd_residuals = residual_sd(df,target_col,extended_forecast,no_missing_values=2, no_parameters=1)
 
         #calculating the standard deviation for the residuals and the forecasted points
         forecast_sd = [sd_residuals * np.sqrt(i * (1 + i/(len(df)-1))) for i in range(1,horizon+1)]
@@ -336,12 +344,13 @@ def drift_pi(df:pd.DataFrame,horizon:int,bootstrap:bool = False, repetitions:int
 
 
 
-def mean_pi(df:pd.DataFrame, horizon=int, bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
+def mean_pi(df:pd.DataFrame,target_col:str, horizon=int, bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
 
     
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data
+        :param target_col: str - column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
         :param bootstrap: bool - toggle bootstrap or normal prediction interval
         :param repetitions: int - Number of bootstrap repetitions
@@ -354,10 +363,10 @@ def mean_pi(df:pd.DataFrame, horizon=int, bootstrap:bool = False, repetitions:in
 
         forecast_df = forecast_dates(df,horizon)
 
-        mean_errors = bs_mean_error(df)
+        mean_errors = bs_mean_error(df,target_col)
 
         for run in range(repetitions):
-            forecast_df[f'run_{run}'] = bs_forecast(df,horizon,mean_errors)
+            forecast_df[f'run_{run}'] = bs_forecast(df,target_col,horizon,mean_errors)
 
         output_forecast = bs_output(forecast_df, pred_width)
 
@@ -373,7 +382,7 @@ def mean_pi(df:pd.DataFrame, horizon=int, bootstrap:bool = False, repetitions:in
         extended_forecast = [forecast_df['forecast'].iloc[0]] * len(df)
 
         #calculating the standard deviation of the residuals and the forecasted points
-        sd_residuls = residual_sd(df,extended_forecast, no_missing_values=2, no_parameters=1)
+        sd_residuls = residual_sd(df,target_col,extended_forecast, no_missing_values=2, no_parameters=1)
         forecast_sd = [sd_residuls * np.sqrt(1 + 1/len(df))] * horizon
 
         #outputting the result
@@ -401,10 +410,11 @@ return trend_pi + seasonal_pi
 
 """
 
-def STL_pi(df:pd.DataFrame, horizon:int, method:{'naive','seasonal_naive', 'drift', 'mean'}, period:int=1, bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
+def STL_pi(df:pd.DataFrame,target_col:str, horizon:int, method:{'naive','seasonal_naive', 'drift', 'mean'}, period:int=1, bootstrap:bool = False, repetitions:int = 100, pred_width=95.0) -> pd.DataFrame:
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data
+        :param target_col: str - column with historical data
         :param method: str - specifying the method used to forecast the trend
         :param horizon: int - Number of timesteps forecasted into the future
         :param period: int - seasonal period
@@ -415,22 +425,20 @@ def STL_pi(df:pd.DataFrame, horizon:int, method:{'naive','seasonal_naive', 'drif
         pandas.DataFrame: a forecast for the trend using the method specified
     """
 
-    stl = STL(df.iloc[:,0], period=period).fit()
+    stl = STL(df[target_col], period=period).fit()
     trend = stl.trend()
 
     if method == 'naive':
-        output_forecast = naive_pi(trend,horizon,bootstrap,repetitions,pred_width)
+        output_forecast = naive_pi(trend,target_col,horizon,bootstrap,repetitions,pred_width)
     
     elif method == 'seasonal_naive':
-        output_forecast = s_naive_pi(trend,horizon,period,bootstrap,repetitions,pred_width)
+        output_forecast = s_naive_pi(trend,target_col,horizon,period,bootstrap,repetitions,pred_width)
 
     elif method == 'drift':
-        output_forecast = drift_pi(trend, horizon,bootstrap,repetitions,pred_width)
+        output_forecast = drift_pi(trend,target_col, horizon,bootstrap,repetitions,pred_width)
 
     elif method == 'mean':
-        output_forecast = mean_pi(trend,horizon,bootstrap,repetitions,pred_width)
+        output_forecast = mean_pi(trend,target_col,horizon,bootstrap,repetitions,pred_width)
 
     return output_forecast
-
-
     

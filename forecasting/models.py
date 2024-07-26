@@ -88,7 +88,7 @@ def mean_method(df:pd.DataFrame,horizon:int) -> list:
 
     return [mean] * horizon
 
-def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_width:float=95,**AutoETS_kwargs) -> pd.DataFrame:
+def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int,pred_width:float=95,**AutoETS_kwargs) -> pd.DataFrame:
 
     #add pred_width
     #fix dates
@@ -113,13 +113,13 @@ def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_
     forecaster = AutoETS(sp=period,auto=True,**AutoETS_kwargs).fit(df[target_col])
 
     forecast = forecaster.predict(fh=fh)
-    pred_int= forecaster.predict_interval(fh=fh,coverage=pred_width/100)
+    pred_int= forecaster.predict_interval(fh=fh,coverage=[pred_width/100])
 
     forecast_ds = pd.date_range(start = df.index[-1], periods = horizon+1, freq = df.index.freq)
 
     output_forecast = pd.DataFrame(index = forecast_ds[1:])
     output_forecast['forecast'] = forecast
-    output_forecast[['lower_pi', 'upper_pi']] = pred_int[pred_width/100][['lower', 'upper']]
+    output_forecast[['lower_pi', 'upper_pi']] = pred_int[target_col,pred_width / 100]
 
     return output_forecast
 
@@ -138,11 +138,14 @@ def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pr
     Ouputs:
         pd.DataFrame: forecast with ARIMA with auto-selected parameters
     """
+
     df.index = pd.to_datetime(df.index)
+    df = df.asfreq(df.index.freq)
+
+    fh = [i for i in range(1,horizon+1)]
 
     forecaster = AutoARIMA(sp = period,**AutoARIMA_kwargs,suppress_warnings=True).fit(df[target_col])
 
-    fh = [i for i in range(1,horizon+1)]
 
     forecast = forecaster.predict(fh=fh)
     pred_int = forecaster.predict_interval(fh=fh,coverage=pred_width / 100)
@@ -151,13 +154,19 @@ def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pr
 
     output_forecast = pd.DataFrame(index = forecast_ds[1:])
     output_forecast['forecast'] = forecast
-    output_forecast[['lower_pi', 'upper_pi']] = pred_int[pred_width/100][['lower', 'upper']]
+    output_forecast[['lower_pi', 'upper_pi']] = pred_int[target_col, pred_width / 100]
 
     return output_forecast
 
-df = pd.read_csv('https://raw.githubusercontent.com/facebook/prophet/main/examples/example_wp_log_peyton_manning.csv',index_col='ds')
-forecast = ETS_forecast(df,'y',30,pred_width=80)
 
+
+df = pd.read_csv('example_validation_data.csv',index_col='ds')
+df = df[['y','forecast','fold']]
+df['abs error'] = abs(df['y'] - df['forecast'])
+df['error'] = df['y'] - df['forecast']
+print(len(df))
+
+forecast = ETS_forecast(df, 'y',period=365, horizon=24)
 print(forecast)
 
 """from sktime.datasets import load_airline
