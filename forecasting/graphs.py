@@ -1,37 +1,34 @@
 # Graphs for both output forecasts & evaluation
-import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pandas as pd
 from scipy.stats import normaltest
 from statsmodels.tsa.seasonal import STL
 import numpy as np
-from prediction_intervals import forecast_dates, bs_naive_error, bs_drift_error, bs_mean_error, bs_forecast, bs_output
+from prediction_intervals import forecast_dates, bs_naive_error, bs_drift_error, bs_mean_error, bs_forecast, bs_output, fitted_forecast
 
 
 
-def resid_diagnostic(df:pd.DataFrame,df_target_col:str, fcst:pd.Series) -> go.Figure:
+def resid_diagnostic(df:pd.DataFrame,target_col:str, fcst:pd.Series) -> go.Figure:
     #fix legend (underneath first plot)
     """
     Inputs:
-        :param df:pd.DataFrame - Historical time series data with date-time index
-        :param df_target_col:str - column with historical data
-        :param fcst:pd.Series - One-step forecasts stored with a date-time index
+        :param df: pd.DataFrame - Historical time series data with date-time index
+        :param df_target_col: str - Column with historical data
+        :param fcst: pd.Series - One-step forecasts stored with a date-time index
     Outputs:
         go.Figure - Subplots of the residuals, the ACF and a histogram of the residuals
     """
 
-    
-
     plot_frame = pd.DataFrame(index = df.index)
-    plot_frame['error'] = df[df_target_col] - fcst
+    plot_frame['error'] = df[target_col] - fcst
     cor_coeffs=[]
 
     #calculating the correlation coeficients for the lagged values for the ACF
 
     for i in range(0,len(df)):
-        plot_frame['corr'] = df[df_target_col].shift(i+1)
-        cor_coeffs.append(df[df_target_col].corr(plot_frame['corr']))
+        plot_frame['corr'] = df[target_col].shift(i+1)
+        cor_coeffs.append(df[target_col].corr(plot_frame['corr']))
 
     #calculating the 2-sided chi-squared p-value for a normal hypothesis test on the residuals
 
@@ -106,13 +103,13 @@ def resid_diagnostic(df:pd.DataFrame,df_target_col:str, fcst:pd.Series) -> go.Fi
 
 
 
-def forecast_with_data(df:pd.DataFrame,target_col:str,model:str,period:int) -> go.Figure:
+def fitted_forecast(df:pd.DataFrame,target_col:str,method:str,period:int) -> go.Figure:
     
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index
         :param target_col: str - The column of df the observed data is located
-        :param model: str - one of {'naive','seasonal naive','drift','mean'} to see the forecast against the data
+        :param method: str - one of {'naive','seasonal naive','drift','mean'} to see the forecast against the data
         :param period: int - seasonal period
     Ouputs:
         go.Figure - A plot of the observed data and the fit of the forecast selected
@@ -121,96 +118,26 @@ def forecast_with_data(df:pd.DataFrame,target_col:str,model:str,period:int) -> g
     fig=go.Figure()
     fig.add_trace(go.Scatter(x=df.index,y=df[target_col],
                              line=dict(color='#00789c'),
-                             name='observed data')
-                 )
+                             name='observed data'))
 
+    forecast = fitted_forecast(df,target_col, method, period)
 
-    if model == 'naive':
-
-        forecast = [df[target_col][-1]] * len(df)
-
-        fig.add_trace(go.Scatter(x=df.index,y=forecast,
-                         line=dict(color='#d1495b'),
-                         name='Fitted forecast'))
-        
-        fig.update_layout(height=600,
-                        title_text='Observed data and fitted forecast',
-                        legend=dict(orientation="h",  
-                                    xanchor="center", 
-                                    yanchor="top",  
-                                    x=0.5,  
-                                    y=-0.2))
-
-        fig.update_xaxes(title_text='Date')
-        fig.update_yaxes(title_text= 'df_traget_col')
-
-    elif model == 'seasonal naive':
-
-        season = df[target_col][-period:].tolist()
-        season_mult = len(df) // period + 1
-        forecast = (season * season_mult)[-len(df) % period:]
-
-        fig.add_trace(go.Scatter(x=df.index,y=forecast,
-                         line=dict(color='#d1495b'),
-                         name='Fitted forecast'))
-        
-        fig.update_layout(height=600,
-                        title_text='Observed data and fitted forecast',
-                        legend=dict(orientation="h",  
-                                    xanchor="center", 
-                                    yanchor="top",  
-                                    x=0.5,  
-                                    y=-0.2))
-
-        fig.update_xaxes(title_text='Date')
-        fig.update_yaxes(title_text= 'df_traget_col')
-            
-    elif model == 'drift':
-
-        first_obs = df[target_col][0]
-        latest_obs = df[target_col][-1]
-        slope = (latest_obs-first_obs) / len(df)
-        forecast = [first_obs + i * slope for i in range(len(df))]
-
-        fig.add_trace(go.Scatter(x=df.index,y=forecast,
-                         line=dict(color='#d1495b'),
-                         name='Fitted forecast'))
-        
-        fig.update_layout(height=600,
-                        title_text='Observed data and fitted forecast',
-                        legend=dict(orientation="h",  
-                                    xanchor="center", 
-                                    yanchor="top",  
-                                    x=0.5,  
-                                    y=-0.2
-                                    )
-                          )
-
-        fig.update_xaxes(title_text='Date')
-        fig.update_yaxes(title_text= 'df_traget_col')
+    fig.add_trace(go.Scatter(x=df.index,y=forecast,
+                        line=dict(color='#d1495b'),
+                        name='Fitted forecast'))
     
-    elif model == 'mean':
+    fig.update_layout(height=600,
+                    title_text='Observed data and fitted forecast',
+                    legend=dict(orientation="h",  
+                                xanchor="center", 
+                                yanchor="top",  
+                                x=0.5,  
+                                y=-0.2))
 
-        mean = sum(df[target_col]) / len(df)
-        forecast = [mean] * len(df)
+    fig.update_xaxes(title_text='Date')
+    fig.update_yaxes(title_text= 'df_traget_col')
 
-        fig.add_trace(go.Scatter(x=df.index,y=forecast,
-                                 line=dict(color='#d1495b'),
-                                 name='Fitted forecast'
-                                 )
-                     )
-        fig.update_layout(height=600,
-                          title_text='Observed data and fitted forecast',
-                          legend=dict(orientation="h",  
-                                      xanchor="center", 
-                                      yanchor="top",  
-                                      x=0.5,  
-                                      y=-0.2
-                                     )
-                          )
-
-        fig.update_xaxes(title_text='Date')
-        fig.update_yaxes(title_text= target_col)
+    
     
     return fig
 
@@ -364,7 +291,7 @@ def seasonal_change(df:pd.DataFrame, target_col:str, period:int) -> go.Figure:
     return fig
 
 
-def data_with_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFrame) -> go.Figure:
+def future_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFrame) -> go.Figure:
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index

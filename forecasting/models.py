@@ -56,7 +56,6 @@ def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
     Outputs:
         list: Forecasted time series with drift method
     """
-
     latest_obs = df[target_col].iloc[-1]
     first_obs = df[target_col].iloc[0]
 
@@ -152,3 +151,11 @@ def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pr
     output_forecast[['lower_pi', 'upper_pi']] = pred_int[target_col, pred_width / 100]
 
     return output_forecast
+
+df = pd.read_csv('example_validation_data.csv')
+df = df[['y','forecast','fold']]
+df['abs error'] = abs(df['y'] - df['forecast'])
+df['error'] = df['y'] - df['forecast']
+
+forecast = drift_method(df,'y', 365)
+print(forecast)
