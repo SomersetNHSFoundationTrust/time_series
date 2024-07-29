@@ -2,15 +2,22 @@
 
 # Example
 import pandas as pd
+import numpy as np
 from prophet import Prophet
+from sktime.forecasting.arima import AutoARIMA
+from sktime.forecasting.ets import AutoETS
 
 
-def prophet_forecast(df, horizon, **kwargs):
+def prophet_forecast(df:pd.DataFrame, horizon:int, **kwargs) -> pd.DataFrame:
+    
     """
-    :param df: Pandas.DataFrame - historical time series data.
-    :param horizon: int - Number of time steps to forecast.
-    :param kwargs: Facebook Prophet keyword arguments.
-    :return: Pandas.DataFrame - Forecast.
+    Inputs:
+        :param df: pandas.DataFrame - Historical time series data with date-time index
+        :param horizon: int - Number of time steps to forecast.
+        :param kwargs - Facebook Prophet keyword arguments.
+        :return: Pandas.DataFrame - Forecast.
+    Outputs:
+        pd.DataFrame: 
     """
 
     model = Prophet(**kwargs)
@@ -20,17 +27,29 @@ def prophet_forecast(df, horizon, **kwargs):
     forecast = model.predict(future)
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
-def s_naive(df, period, forecast_horizon):
+def naive(df:pd.DataFrame, horizon:int) -> list:
     """
     Inputs:
-        df (pandas.Series): Historical time series observations (in order)
-        period (int): Seasonal period (i.e., 12 for monthly data)
-        horizon (int): Number of timesteps forecasted into the future
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
-        list: Forecasted time series
+        list: Forecasted time series with naive method
+    """
+    most_recent_value = df.iloc[-1,0]
+    return [most_recent_value] * horizon
+
+def s_naive(df:pd.DataFrame, target_col:str, period:int,  horizon:int) -> list:
+    """
+    Inputs:
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param target_col: str - column with historical data
+        :param period: int - Seasonal period
+        :param horizon: int - Number of timesteps forecasted into the future
+    Outputs:
+        list: Forecasted time series with seasonal naive method
     """
 
-    most_recent_seasonal = df[-period:].to_list()
+    most_recent_seasonal = df[target_col][-period:].to_list()
 
     # We now need to make the forecast
     # Number of times to multiply the list to ensure we meet forecast horizon
@@ -38,23 +57,106 @@ def s_naive(df, period, forecast_horizon):
 
     return (most_recent_seasonal * mult_list)[:horizon]
 
-def drift_method(df, horizon):
+def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
     """
     Inputs:
-        ts (pandas.Series): Historical time series observations (in order)
-        horizon (int): Number of timesteps forecasted into the future
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param target_col: str - column with historical data
+        :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
-        list: Forecasted time series
+        list: Forecasted time series with drift method
     """
 
-    latest_obs = df.iloc[-1]
-    first_obs = df.iloc[0]
+    latest_obs = df[target_col][-1]
+    first_obs = df[target_col][0]
 
-    slope = (latest_obs - first_obs) / (len(ts) - 1)
+    slope = (latest_obs - first_obs) / (len(df) - 1)
 
     forecast_list = [latest_obs + slope * h for h in range(1, horizon + 1)]
 
     return forecast_list
 
+def mean_method(df:pd.DataFrame,target_col:str,horizon:int) -> list:
+    """
+    Inputs:
+        :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param target_col: str - column with historical data
+        :param horizon: int - Number of timesteps forecasted into the future
+    Outputs:
+        list: Forecasted time series with mean method
+    """
+   
+
+    mean = sum(df[target_col]) / len(df)
+
+    return [mean] * horizon
+
+def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int,pred_width:float=95,**AutoETS_kwargs) -> pd.DataFrame:
+
+    #add pred_width
+    #fix dates
+
+    """
+    Inputs:
+        :param df: pd.DataFrame - Historical time series data
+        :param target_col: str - column to forecast
+        :param horizon: int - Number of timesteps forecasted into the future
+        :param period: int - seasonal period
+        :param pred_width: float - 0 <= pred_width < 100 width of prediction interval
+        :param **AutoETS_kwargs - keyword arguments for the sktime AutoETS() function
+    Ouputs:
+        pd.DataFrame: forecast with exponential smmothing with auto-selected parameters
+    """
+
+    df.index=pd.to_datetime(df.index)
+    df = df.asfreq(df.index.freq)
+
+    fh = [i for i in range(1,horizon+1)]
+
+    forecaster = AutoETS(sp=period,auto=True,**AutoETS_kwargs).fit(df[target_col])
+
+    forecast = forecaster.predict(fh=fh)
+    pred_int= forecaster.predict_interval(fh=fh,coverage=[pred_width/100])
+
+    forecast_ds = pd.date_range(start = df.index[-1], periods = horizon+1, freq = df.index.freq)
+
+    output_forecast = pd.DataFrame(index = forecast_ds[1:])
+    output_forecast['forecast'] = forecast
+    output_forecast[['lower_pi', 'upper_pi']] = pred_int[target_col,pred_width / 100]
+
+    return output_forecast
 
 
+   
+
+def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pred_width:float = 95, **AutoARIMA_kwargs) -> pd.DataFrame:
+    """
+    Inputs:
+        :param df: pd.DataFrame - Historical time series data
+        :param target_col: str - column to forecast
+        :param horizon: int - Number of timesteps forecasted into the future
+        :param period: int - seasonal period
+        :param pred_width: float - 0 <= pred_width < 100 width of prediction interval
+        :param **AutoARIMA_kwargs - keyword arguments for the sktime AutoARIMA() function
+    Ouputs:
+        pd.DataFrame: forecast with ARIMA with auto-selected parameters
+    """
+
+    df.index = pd.to_datetime(df.index)
+    df = df.asfreq(df.index.freq)
+
+    fh = [i for i in range(1,horizon+1)]
+
+    forecaster = AutoARIMA(sp = period,**AutoARIMA_kwargs,suppress_warnings=True).fit(df[target_col])
+
+
+    forecast = forecaster.predict(fh=fh)
+    pred_int = forecaster.predict_interval(fh=fh,coverage=pred_width / 100)
+
+    forecast_ds = pd.date_range(start = df.index[-1], periods = horizon+1, freq = df.index.freq)
+
+    output_forecast = pd.DataFrame(index = forecast_ds[1:])
+    output_forecast['forecast'] = forecast
+    output_forecast[['lower_pi', 'upper_pi']] = pred_int[target_col, pred_width / 100]
+
+    return output_forecast
