@@ -9,19 +9,23 @@ from prediction_intervals import forecast_dates, bs_naive_error, bs_drift_error,
 
 
 
-def resid_diagnostic(df:pd.DataFrame,target_col:str, fcst:pd.Series) -> go.Figure:
+def resid_diagnostic(df:pd.DataFrame,target_col:str, fitted_forecast:list) -> go.Figure:
     #fix legend (underneath first plot)
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index
         :param df_target_col: str - Column with historical data
-        :param fcst: pd.Series - One-step forecasts stored with a date-time index
+        :param fitted_forecast: list - One-step forecasts stored with a date-time index
     Outputs:
         go.Figure - Subplots of the residuals, the ACF and a histogram of the residuals
     """
 
+    forecast = pd.DataFrame(index = df.index)
+    forecast['fcst'] = fitted_forecast
+
     plot_frame = pd.DataFrame(index = df.index)
-    plot_frame['error'] = df[target_col] - fcst
+    plot_frame['error'] = df[target_col] - forecast['fcst']
+
     cor_coeffs=[]
 
     #calculating the correlation coeficients for the lagged values for the ACF
@@ -31,8 +35,6 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, fcst:pd.Series) -> go.Figur
         cor_coeffs.append(df[target_col].corr(plot_frame['corr']))
 
     #calculating the 2-sided chi-squared p-value for a normal hypothesis test on the residuals
-
-
 
     fig = make_subplots(
         rows=2, cols=2,
@@ -103,7 +105,7 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, fcst:pd.Series) -> go.Figur
 
 
 
-def fitted_forecast(df:pd.DataFrame,target_col:str,method:str,period:int) -> go.Figure:
+def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int) -> go.Figure:
     
     """
     Inputs:
@@ -286,7 +288,8 @@ def seasonal_change(df:pd.DataFrame, target_col:str, period:int) -> go.Figure:
         fig.update_xaxes(title_text='Date',row=1, col=plot_no+1)
         fig.update_yaxes(title_text=target_col,row=1, col=plot_no+1)
 
-    fig.update_layout(height=600,showlegend=False,template='plotly_white')
+    fig.update_layout(height=600,showlegend=False,template='plotly_white',
+                      title_text = 'Plots of each stage in every season')
 
     return fig
 
@@ -305,7 +308,8 @@ def future_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFram
     
     fig=go.Figure()
 
-    fig.add_trace(go.Scatter(x=df.index, y=df[target_col],line=dict(color='#00789c')))
+    fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
+                             line=dict(color='#00789c'), name = 'Observed Data'))
 
     fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['forecast'],
                             name='Forecast',
@@ -313,10 +317,10 @@ def future_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFram
     
     fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['lower_pi'],
                             name = 'Prediction interval bounds',
-                            line = dict(color='#00789c')))
+                            line = dict(color='#9db2bf')))
     
     fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['upper_pi'],
-                            line = dict(color='#00789c'),
+                            line = dict(color='#9db2bf'),
                             fill = 'tonexty',
                             fillcolor='rgba(0,120,156,0.3)',
                             showlegend=False))
@@ -375,8 +379,8 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str
     fig = go.Figure()
 
     #the observed data
-    fig.add_trace(go.Scatter(x=df.index, y=df[target_col]),
-                  showlegend=False)
+    fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
+                             name = 'Observed data'))
 
     #the mean of the simulations
     fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['forecast'],

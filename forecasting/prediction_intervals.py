@@ -127,7 +127,6 @@ def bs_output(forecast_df:pd.DataFrame, pred_width:float = 95) -> pd.DataFrame :
     new_pred_width = (100 - (100-pred_width)/2) / 100
 
     #storing the mean and quantiles for each forecast point in columns
-    #the dates in forecast_df are 'ds' from the forecast_dates function
     output_forecast = pd.DataFrame(forecast_df.mean(axis=1), columns=['forecast'])
     output_forecast['lower_pi'] = forecast_df.quantile(1 - new_pred_width, axis=1)
     output_forecast['upper_pi'] = forecast_df.quantile(new_pred_width, axis=1)
@@ -207,16 +206,10 @@ def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_widt
     #calculating the multiplier for the forecast standard deviation depending on the prediction width
     pi_mult = norm.ppf(new_pred_width)
     
-    forecast_df['lower_pi'] = [forecast_df['forecast'][i] - pi_mult * forecast_sd[i] for i in range(horizon)]
-    forecast_df['upper_pi'] = [forecast_df['forecast'][i] + pi_mult * forecast_sd[i] for i in range(horizon)]
+    forecast_df['lower_pi'] = [forecast_df['forecast'].iloc[i] - pi_mult * forecast_sd[i] for i in range(horizon)]
+    forecast_df['upper_pi'] = [forecast_df['forecast'].iloc[i] + pi_mult * forecast_sd[i] for i in range(horizon)]
 
     return forecast_df
-
-
-
-
-
-######################################################################################################################################
 
 
 
@@ -267,7 +260,6 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, bootstrap=False, repe
         #calculating the residuals using the forecast (the last observed value)
         sd_resiuals = residual_sd(df,target_col,fitted_fcst,no_missing_values=1)
         forecast_sd = [sd_resiuals * np.sqrt(h) for h in range(1,horizon+1)]
-        print(sd_resiuals, forecast_sd)
         
         #creating an output forecast with the naive forecast and prediction interval
         output_forecast = pi_output(forecast_df,horizon,forecast_sd,pred_width)
@@ -358,7 +350,7 @@ def drift_pi(df:pd.DataFrame,target_col:str,horizon:int,bootstrap:bool = False, 
     else:
         #setting up the forecast dataframe
         forecast_df = forecast_dates(df,horizon)
-        forecast_df['forecast'] = drift_method(df,horizon)
+        forecast_df['forecast'] = drift_method(df,target_col,horizon)
 
         #using a fitted forecast to compare to the data to calculate the residuals
 
@@ -409,7 +401,7 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon=int, bootstrap:bool = False,
 
         #setting up the forecast dataframe
         forecast_df = forecast_dates(df,horizon)
-        forecast_df['forecast'] = mean_method(df,horizon)
+        forecast_df['forecast'] = mean_method(df,target_col,horizon)
 
         #using a fitted forecast to compare to the data to calculate the residuals
         fitted_fcst = fitted_forecast(df,target_col, method = 'mean')
@@ -442,7 +434,7 @@ def STL_pi(df:pd.DataFrame,target_col:str, horizon:int, method:str,
     """
 
     stl = STL(df[target_col], period=period).fit()
-    trend = stl.trend()
+    trend = stl.trend
 
     if method == 'naive':
         output_forecast = naive_pi(trend,target_col,horizon,bootstrap,repetitions,pred_width)
