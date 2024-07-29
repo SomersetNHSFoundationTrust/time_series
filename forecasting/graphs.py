@@ -463,6 +463,8 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str
     
     fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['lower_pi'],
                              line=dict(color='#00789c'),
+                             fill = 'tonexty',
+                             fillcolor = 'rgba(0,120,156,0.3)',
                             showlegend=False))
     
 
