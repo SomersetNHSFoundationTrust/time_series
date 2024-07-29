@@ -1,6 +1,7 @@
 # What forecasting models shall we include? What libraries will we need to use these models?
 
 # Example
+
 import pandas as pd
 import numpy as np
 from prophet import Prophet
@@ -27,35 +28,24 @@ def prophet_forecast(df:pd.DataFrame, horizon:int, **kwargs) -> pd.DataFrame:
     forecast = model.predict(future)
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
-def naive(df:pd.DataFrame, horizon:int) -> list:
+
+
+def naive(df:pd.DataFrame, target_col:str, horizon:int, period:int=1) -> list:
     """
     Inputs:
         :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param target_col: str - Column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
+        :prarm period: int - Seasonal period
     Outputs:
         list: Forecasted time series with naive method
     """
-    most_recent_value = df.iloc[-1,0]
-    return [most_recent_value] * horizon
+    most_recent_value = df[target_col].iloc[-period:].tolist()
 
-def s_naive(df:pd.DataFrame, target_col:str, period:int,  horizon:int) -> list:
-    """
-    Inputs:
-        :param df: pandas.DataFrame -  Historical time series data with date-time index
-        :param target_col: str - column with historical data
-        :param period: int - Seasonal period
-        :param horizon: int - Number of timesteps forecasted into the future
-    Outputs:
-        list: Forecasted time series with seasonal naive method
-    """
-
-    most_recent_seasonal = df[target_col][-period:].to_list()
-
-    # We now need to make the forecast
-    # Number of times to multiply the list to ensure we meet forecast horizon
     mult_list = int(np.ceil(horizon / period))
+    return (most_recent_value * mult_list)[:horizon]
 
-    return (most_recent_seasonal * mult_list)[:horizon]
+
 
 def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
     """
@@ -67,14 +57,15 @@ def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
         list: Forecasted time series with drift method
     """
 
-    latest_obs = df[target_col][-1]
-    first_obs = df[target_col][0]
+    latest_obs = df[target_col].iloc[-1]
+    first_obs = df[target_col].iloc[0]
 
     slope = (latest_obs - first_obs) / (len(df) - 1)
 
     forecast_list = [latest_obs + slope * h for h in range(1, horizon + 1)]
 
     return forecast_list
+
 
 def mean_method(df:pd.DataFrame,target_col:str,horizon:int) -> list:
     """
@@ -90,6 +81,7 @@ def mean_method(df:pd.DataFrame,target_col:str,horizon:int) -> list:
     mean = sum(df[target_col]) / len(df)
 
     return [mean] * horizon
+
 
 def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int,pred_width:float=95,**AutoETS_kwargs) -> pd.DataFrame:
 
