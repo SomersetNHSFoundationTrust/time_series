@@ -38,17 +38,18 @@ def naive(df:pd.DataFrame, horizon:int) -> list:
     most_recent_value = df.iloc[-1,0]
     return [most_recent_value] * horizon
 
-def s_naive(df:pd.DataFrame, period:int, horizon:int) -> list:
+def s_naive(df:pd.DataFrame, target_col:str, period:int,  horizon:int) -> list:
     """
     Inputs:
         :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param target_col: str - column with historical data
         :param period: int - Seasonal period
         :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
         list: Forecasted time series with seasonal naive method
     """
 
-    most_recent_seasonal = df.iloc[-period:,0].to_list()
+    most_recent_seasonal = df[target_col][-period:].to_list()
 
     # We now need to make the forecast
     # Number of times to multiply the list to ensure we meet forecast horizon
@@ -56,17 +57,18 @@ def s_naive(df:pd.DataFrame, period:int, horizon:int) -> list:
 
     return (most_recent_seasonal * mult_list)[:horizon]
 
-def drift_method(df:pd.DataFrame, horizon:int) -> list:
+def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
     """
     Inputs:
         :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param target_col: str - column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
         list: Forecasted time series with drift method
     """
 
-    latest_obs = df.iloc[-1,0]
-    first_obs = df.iloc[0,0]
+    latest_obs = df[target_col][-1]
+    first_obs = df[target_col][0]
 
     slope = (latest_obs - first_obs) / (len(df) - 1)
 
@@ -74,17 +76,18 @@ def drift_method(df:pd.DataFrame, horizon:int) -> list:
 
     return forecast_list
 
-def mean_method(df:pd.DataFrame,horizon:int) -> list:
+def mean_method(df:pd.DataFrame,target_col:str,horizon:int) -> list:
     """
     Inputs:
         :param df: pandas.DataFrame -  Historical time series data with date-time index
+        :param target_col: str - column with historical data
         :param horizon: int - Number of timesteps forecasted into the future
     Outputs:
         list: Forecasted time series with mean method
     """
    
 
-    mean = sum(df.iloc[:,0]) / len(df)
+    mean = sum(df[target_col]) / len(df)
 
     return [mean] * horizon
 
@@ -157,24 +160,3 @@ def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pr
     output_forecast[['lower_pi', 'upper_pi']] = pred_int[target_col, pred_width / 100]
 
     return output_forecast
-
-
-
-df = pd.read_csv('example_validation_data.csv',index_col='ds')
-df = df[['y','forecast','fold']]
-df['abs error'] = abs(df['y'] - df['forecast'])
-df['error'] = df['y'] - df['forecast']
-print(len(df))
-
-forecast = ETS_forecast(df, 'y',period=365, horizon=24)
-print(forecast)
-
-"""from sktime.datasets import load_airline
-
-df = load_airline()
-fh = [i for i in range(1,31)]
-forecaster = AutoARIMA(sp=12).fit(df)
-pred_int= forecaster.predict_interval(fh=fh,coverage=80/100)
-
-forecast = forecaster.predict(fh=fh)
-print(pred_int,forecast)"""
