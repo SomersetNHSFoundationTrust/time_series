@@ -5,26 +5,34 @@ import pandas as pd
 from scipy.stats import normaltest
 from statsmodels.tsa.seasonal import STL
 import numpy as np
-from prediction_intervals import forecast_dates, bs_naive_error, bs_drift_error, bs_mean_error, bs_forecast, bs_output, fitted_forecast
+from .prediction_intervals import forecast_dates, naive_error, drift_error, mean_error, bs_forecast, bs_output
 
 
 
-def resid_diagnostic(df:pd.DataFrame,target_col:str, fitted_forecast:list) -> go.Figure:
+def resid_diagnostic(df:pd.DataFrame,target_col:str, method:str, period:int=1) -> go.Figure:
     #fix legend (underneath first plot)
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index
         :param df_target_col: str - Column with historical data
-        :param fitted_forecast: list - One-step forecasts stored with a date-time index
+        :param fitted_forecast: list - One-step forecasts stored with a date-time index, as outputted by 'method'_error function
     Outputs:
         go.Figure - Subplots of the residuals, the ACF and a histogram of the residuals
     """
 
-    forecast = pd.DataFrame(index = df.index)
-    forecast['fcst'] = fitted_forecast
+    plot_frame = pd.DataFrame()
 
-    plot_frame = pd.DataFrame(index = df.index)
-    plot_frame['error'] = df[target_col] - forecast['fcst']
+    if method == 'naive':
+        plot_frame['error'] = naive_error(df,target_col)['error']
+
+    elif method == 'seasonal naive':
+        plot_frame['error'] = naive_error(df,target_col, period)['error']
+
+    elif method == 'drift':
+        plot_frame['error'] = drift_error(df,target_col)['error']
+
+    elif method == 'mean':
+        plot_frame['error'] = mean_error(df,target_col)['error']
 
     cor_coeffs=[]
 
@@ -36,6 +44,7 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, fitted_forecast:list) -> go
 
     #calculating the 2-sided chi-squared p-value for a normal hypothesis test on the residuals
 
+    #plotting a bar chart of the residuals
     fig = make_subplots(
         rows=2, cols=2,
         specs=[[{"colspan": 2},None],[{}, {}]],
@@ -45,15 +54,15 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, fitted_forecast:list) -> go
                         marker_color='#00789c',
                         showlegend=False),
                     row=1, col=1)
-
+    
     fig.add_trace(go.Scatter(x=plot_frame.index,
-                            y=[sum(plot_frame['error']) / len(df)] * len(df),
+                            y=[np.mean(plot_frame['error'])] * len(df),
                             name = 'Mean value',
                             line=dict(color='#d1495b',dash = 'dash')),
                 row = 1, col=1)
-
-
-
+    
+    
+     #plotting the ACF
     fig.add_trace(go.Bar(x=plot_frame.index, y=cor_coeffs,
                         marker_color = '#00789c',
                         showlegend=False),
@@ -69,9 +78,8 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, fitted_forecast:list) -> go
                             line=dict(color = '#d1495b', dash = 'dash'),
                             showlegend=False),
                     row=2, col=1)
-
-
-
+    
+    #plotting a histogram of the residuals
     fig.add_trace(go.Histogram(x=plot_frame['error'],
                             opacity=0.7,
                             marker_color='#66a182',
@@ -105,7 +113,7 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, fitted_forecast:list) -> go
 
 
 
-def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int) -> go.Figure:
+def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int=1) -> go.Figure:
     
     """
     Inputs:
@@ -118,18 +126,31 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int) 
     """
 
     fig=go.Figure()
+
     fig.add_trace(go.Scatter(x=df.index,y=df[target_col],
                              line=dict(color='#00789c'),
-                             name='observed data'))
+                             name='Observed data'))
 
-    forecast = fitted_forecast(df,target_col, method, period)
+    #calculating the fitted forecast
+    if method == 'naive':
+        fitted_forecast = naive_error(df,target_col)['fitted forecast']
 
-    fig.add_trace(go.Scatter(x=df.index,y=forecast,
+    elif method == 'seasonal naive':
+        fitted_forecast = naive_error(df,target_col, period)['fitted forecast']
+
+    elif method == 'drift':
+        fitted_forecast = drift_error(df,target_col)['fitted forecast']
+
+    elif method == 'mean':
+        fitted_forecast = mean_error(df,target_col)['fitted forecast']
+
+
+    fig.add_trace(go.Scatter(x=df.index,y=fitted_forecast,
                         line=dict(color='#d1495b'),
                         name='Fitted forecast'))
     
     fig.update_layout(height=600,
-                    title_text='Observed data and fitted forecast',
+                    title_text=f'Observed data and fitted forecast with {method} method',
                     legend=dict(orientation="h",  
                                 xanchor="center", 
                                 yanchor="top",  
@@ -137,7 +158,7 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int) 
                                 y=-0.2))
 
     fig.update_xaxes(title_text='Date')
-    fig.update_yaxes(title_text= 'df_traget_col')
+    fig.update_yaxes(title_text= target_col)
 
     
     
@@ -225,10 +246,12 @@ def seasonal_plot(df:pd.DataFrame,target_col:str, period:int) -> go.Figure:
         go.Figure - A plot of all of the seasonal periods
     """
 
+    #creating the x-axis for the plot
     x_axis = [i for i in range(1,period+1)]
 
     fig = go.Figure()
 
+    #plotting each season, checking each has the right length
     for season in range(len(df) // period):
         index = season * period
 
@@ -300,7 +323,7 @@ def future_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFram
         :param df: pd.DataFrame - Historical time series data with date-time index
         :param target_col: str - The column of df the observed data is located
         :param output_forecast: pd.DataFrame - a data frame with the forecasted dates and the forecast,
-                                        the lower and the upper bounds for the prediction interval as columns,
+                                        the lower and the upper bounds for the prediction intervals as columns,
                                         as outputted from prediction_intervals
     Ouputs:
         go.Figure - A plot of the oberserved data, the forecast and the prediction interval
@@ -310,30 +333,42 @@ def future_forecast(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFram
 
     fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
                              line=dict(color='#00789c'), name = 'Observed Data'))
+    
+    #plotting the prediction intervals from pred_width and giving each the right opacity
+    no_columns = len(output_forecast.columns)
+    
+    for index in range(1,no_columns,2):
+        lower_pi_name = output_forecast.columns[index]
+        upper_pi_name = output_forecast.columns[index+1]
 
+        fill_opacity = 0.5 - index / no_columns / 2
+
+        fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast[lower_pi_name],
+                            name = f'{lower_pi_name[:2]}% Prediction interval',
+                            line = dict(color='#9db2bf')))
+    
+        fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast[upper_pi_name],
+                                line = dict(color='#9db2bf'),
+                                fill = 'tonexty',
+                                fillcolor=f'rgba(0,120,156,{fill_opacity})',
+                                showlegend=False))
+        
     fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['forecast'],
                             name='Forecast',
                             line = dict(color='#d1495b')))
-    
-    fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['lower_pi'],
-                            name = 'Prediction interval bounds',
-                            line = dict(color='#9db2bf')))
-    
-    fig.add_trace(go.Scatter(x=output_forecast.index, y=output_forecast['upper_pi'],
-                            line = dict(color='#9db2bf'),
-                            fill = 'tonexty',
-                            fillcolor='rgba(0,120,156,0.3)',
-                            showlegend=False))
 
+
+    
+   
     fig.update_xaxes(title_text='Date')
     fig.update_yaxes(title_text=target_col)
 
-    fig.update_layout(height = 600, template = 'plotly_white',title_text='Forecast and prediction interval')
+    fig.update_layout(height = 600, template = 'plotly_white',title_text='Forecast and prediction intervals')
 
     return fig
 
 
-def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str,repetitions:int,period:int=1, pred_width:float = 95,show_simulations:bool=False) -> go.Figure:
+def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str,repetitions:int,period:int=1, pred_width:float = 95) -> go.Figure:
     """
     Inputs:
         :param df: pd.DataFrame - Historical time series data with date-time index
@@ -343,81 +378,73 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str
         :param repetitions: int - Number of bootstrap repetitions
         :param period: int - Seasonal period
         :param pred_width : float - 0 <= pred_width < 100 width of prediction interval
-        :param show_simulations: bool - Toggle whether to see the bootstraped simulations
+        :param show_simulations: bool - Toggle whether to see the bootstrapped simulations
     Ouputs:
-        go.Figure - A plot of all simulated bootstraped forecasts and the prediction interval
+        go.Figure - A plot of all simulated bootstrapped forecasts and the prediction interval
     """
 
+    #finding the errors between the required fitted forecast and the data
     forecast_df = forecast_dates(df,horizon)
+    error = pd.DataFrame()
 
     if method == 'naive':
-        naive_error = bs_naive_error(df,target_col)
-
-        for run in range(repetitions):
-            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,naive_error)
+        error = naive_error(df,target_col)['error']
 
     elif method == 'seasonal naive':
-        s_naive_error = bs_naive_error(df,target_col,period)
-
-        for run in range(repetitions):
-            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,s_naive_error)
+        error = naive_error(df,target_col,period)['error']
 
     elif method == 'drift':
-        drift_error = bs_drift_error(df,target_col)
-
-        for run in range(repetitions):
-            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,drift_error)
+        error = drift_error(df,target_col)['error']
 
     elif method == 'mean':
-        mean_error = bs_mean_error(df,target_col)
+        error = mean_error(df,target_col)['error']
 
-        for run in range(repetitions):
-            forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,mean_error)
 
+    bs_fig = go.Figure()
+
+    #randomly sampling from these errors and graphing them
+    for run in range(repetitions):
+        forecast_df[f'run {run}'] = bs_forecast(df,target_col,horizon,error)
+
+        bs_fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df[f'run {run}'],
+                                    showlegend=False,
+                                    line=dict(color='#9db2bf'),
+                                    opacity=0.25))
+        
+    
+    bs_fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
+                                name='Observed data',
+                                line=dict(color='#00789c')))
+        
     pred_int = bs_output(forecast_df, pred_width)
 
-    fig = go.Figure()
-
-    #the observed data
-    fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
-                             name = 'Observed data'))
-
-    #the mean of the simulations
-    fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['forecast'],
-                             name = 'Mean of bootstrapped forecasts',
-                             line=dict(color='#d1495b')))
+    bs_fig.add_trace(go.Scatter(x=forecast_df.index, y=pred_int['forecast'],
+                                name='Mean of bootstrapped forecasts',
+                                line=dict(color='#d1495b')))
     
-    #the prediction interval bounds
-    fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['upper_pi'],
-                             name = 'Prediction interval bounds',
-                             line=dict('#00789c')))
+    #graphing the prediction intervals as darker than the simulations
+    no_columns = len(pred_int.columns)
     
-    fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int['lower_pi'],
-                             line=dict(color='#00789c'),
-                             fill = 'tonexty',
-                             fillcolor = 'rgba(0,120,156,0.3)',
-                            showlegend=False))
+    for index in range(1,no_columns,2):
+
+        lower_pi_name = pred_int.columns[index]
+        upper_pi_name = pred_int.columns[index+1]
+
+        bs_fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int[lower_pi_name],
+                                    name = f'{lower_pi_name[:2]}% Prediction interval',
+                                    line = dict(color='#9db2bf')))
     
+        bs_fig.add_trace(go.Scatter(x=pred_int.index, y=pred_int[upper_pi_name],
+                                    line = dict(color='#9db2bf'),
+                                    showlegend=False))
+        
+    
+        
+    bs_fig.update_xaxes(title_text='Date')
+    bs_fig.update_yaxes(title_text=target_col)
 
-    if show_simulations:
-
-        for run in range(repetitions):
-
-            fig.add_trace(go.Scatter(x=forecast_df.index, y=forecast_df[f'run {run}'],
-                                     showlegend=False,
-                                     line=dict(color='#9db2bf')))
-
-
-    fig.update_xaxes(title_text='Date')
-    fig.update_yaxes(title_text=target_col)
-
-    fig.update_layout(height=600,
+    bs_fig.update_layout(height=600,
                       title_text='Bootstrapped precition interval',
-                      template='plotly_white',
-                      legend=dict(yanchor="top",
-                                orientation="h",
-                                y=-0.2,
-                                xanchor="centre",
-                                x=-0.5))
+                      template='plotly_white')
     
-    return fig
+    return bs_fig
