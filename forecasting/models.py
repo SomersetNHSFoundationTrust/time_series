@@ -75,9 +75,8 @@ def mean_method(df:pd.DataFrame,target_col:str,horizon:int) -> list:
     Outputs:
         list: Forecasted time series with mean method
     """
-   
 
-    mean = sum(df[target_col]) / len(df)
+    mean = np.mean(df[target_col])
 
     return [mean] * horizon
 
