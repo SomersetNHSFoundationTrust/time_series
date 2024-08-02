@@ -1,7 +1,6 @@
 # Functions for train/test splits & cross validation
 # We can output summary tables for key forecasting metrics (i.e., MAPE/MAE/...)
 
-from .models import prophet_forecast
 from sklearn.model_selection import TimeSeriesSplit
 import pandas as pd
 
