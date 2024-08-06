@@ -109,9 +109,9 @@ def drift_error(df:pd.DataFrame,target_col:str) -> pd.DataFrame:
         pandas.DataFrame: dataframe with errors from drift one-step forecasts and the fitted forecast
     """
 
-    fitted_values = [np.nan]
+    fitted_values = [np.nan,np.nan]
 
-    for i in range(1,len(df)):
+    for i in range(2,len(df)):
         forecast = drift_method(df.iloc[:i],target_col,horizon=1)
         fitted_values.append(forecast[0])
     

@@ -6,7 +6,9 @@ from scipy.stats import normaltest
 from statsmodels.tsa.seasonal import STL
 import numpy as np
 from .bootstrap_naive_models import bs_benchmark_forecast
-from .more_models import benchmark_fit, benchmark_forecast
+from .more_models import benchmark_fit, benchmark_forecast,model_dict
+from .model_selection import forecast_metrics, cross_val
+from sklearn.metrics import *
 
 
 
@@ -463,3 +465,95 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str
                                 y=-0.2))
     
     return bs_fig
+
+
+def cross_val_graph(df:pd.DataFrame,target_col:str,n_splits:int=5,test_size:int=None, model:dict = model_dict) -> go.Figure:
+    """
+    Test forecasting method/s on observed data
+
+    Inputs:
+        :param df: pandas.DataFrame - Univariate time series dataset.
+        :param target_col:str - Column with historical data
+        :param n_splits: int - Number of folds.
+        :param test_size: int -  Forecast horizon during each fold.
+        :param model: dict - a dictionary of length one with the model (str) as a key and its function as the value
+    Outputs:
+        Cross validation summary (pandas.DataFrame)
+    """
+
+    fig = make_subplots(
+            rows=len(model), cols=1,
+            subplot_titles= [method for method in model])
+
+    train_test_dict = cross_val(df,target_col,n_splits, test_size, model)
+    row_no=1
+
+    for method in model:
+
+        fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
+                                 name = 'Observed data',
+                                 line = dict(color = '#00789c')),
+                                 row = row_no, col=1)
+
+        fig.add_trace(go.Scatter(x=train_test_dict[method].index, y=train_test_dict[method]['forecast'],
+                                 name  = f'{method} forecast',
+                                 line = dict(color = '#d1495b')),
+                                 row=row_no, col=1)
+        
+        fig.update_xaxes(title_text = 'Date',row=row_no, col=1)
+        fig.update_yaxes(title_text = target_col, row=row_no, col=1)
+
+        fold_min_stats = train_test_dict[method].copy().reset_index().groupby(by='fold').min()
+        model_retrained = fold_min_stats.iloc[:,0].to_list()
+
+        for retrained in model_retrained:
+
+            fig.add_vline(retrained, line_width=1.5,
+                          line_dash="dash",
+                          line_color="green",
+                          row=row_no, col=1)
+
+        
+        row_no += 1
+
+    fig.update_layout(template = 'plotly_white',
+                      legend=dict(orientation="h",  
+                                xanchor="center", 
+                                yanchor="top",  
+                                x=0.5,  
+                                y=-0.2))
+    
+    return fig
+
+
+def metric_bar(df:pd.DataFrame,target_col:str, eval_metric:str='Mean squared error', n_splits:int=5, test_size:int=None, model:dict = model_dict) -> go.Figure:
+    
+    """
+    Cross validation (k-fold) for time series data.
+
+    Inputs:
+        :param df: pandas.DataFrame - Univariate time series dataset.
+        :param target_col: str - Column with historical data
+        :param eval_metric - one of {'Mean absolute error', 'Mean absolute percentage error', 'Mean squared error', 'Max error'},
+                             the metric to evaluate each model by
+        :param n_splits: int - Number of folds.
+        :param test_size: int -  Forecast horizon during each fold.
+        :param model: dict - a dictionary with the models (str) as keys and their respective functions as values
+        **modelkwargs - keyword arguments for the model chosen
+
+    Outputs:
+        Cross validation summary (pandas.DataFrame)
+    """
+    
+    eval_frame = forecast_metrics(df,target_col, n_splits, test_size, model)
+
+    eval = eval_frame[eval_metric]
+
+    fig= go.Figure()
+
+    fig = fig.add_trace(go.Bar(x = [key for key in model], y = eval,
+                 marker_color = '#00789c'))
+    fig.update_layout(title_text = f'Values of the {eval_metric} for the methods below',
+                      template = 'plotly_white')
+
+    return fig
