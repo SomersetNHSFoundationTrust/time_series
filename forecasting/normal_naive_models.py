@@ -8,12 +8,13 @@ from scipy.stats import norm
 def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_width:list = [95,80]) -> pd.DataFrame:
     """
     Inputs:
-        :param forecast_df: pd.DataFrame - Data frame with extended dates and forecasted points
-        :param horizon: int - Number of timesteps forecasted into the future
-        :param forecast_sd: list - Multi-step standard deviation for each forecasted point
-        :param pred_width: list - 0 <= pred_width < 100 list of widths of prediction intervals
+        :param forecast_df: pandas.DataFrame - Data frame with extended dates and forecasted points.
+        :param horizon: int - Number of timesteps forecasted into the future.
+        :param forecast_sd: list - Multi-step standard deviation from the most recent observation for each forecasted point.
+        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
     Outputs:
-        pd.DataFrame: Data frame with forecast dates as the index and the mean, the lower and upper bounds for the prediction interval
+        pandas.DataFrame: Data frame with the forecasted dates as the index,
+                          and the lower and upper bounds for the prediction intervals as columns.
 
     """
 
@@ -42,13 +43,13 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_wi
    
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with dates as index
-        :param target_col: str - column with historical data
-        :param horizon: int - Number of timesteps forecasted into the future
-        :paarm period: int - Seasonal period
-        :param pred_width: list - 0 <= pred_width < 100 list of widths of prediction intervals
+        :param df: pandas.DataFrame - Historical time series data with dates as index.
+        :param target_col: str - Column with historical data.
+        :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
+        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
     Output:
-        pandas.DataFrame: a bootstrapped or normal prediction interval for df
+        pandas.DataFrame: Naive or seasonal naive forecast and prediction intervals for df.
     """
 
     #extending the dates from df and storing the forecast in forecast_df
@@ -72,16 +73,16 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_wi
 
 
 
-def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, pred_width:list = [95,80]) -> pd.DataFrame:
-
+def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data
-        :param target_col: str - column with historical data
-        :param horizon: int - Number of timesteps forecasted into the future
-        :param pred_width: list - 0 <= pred_width < 100 list of widths of prediction intervals
+        :param df: pandas.DataFrame - Historical time series data with dates as index.
+        :param target_col: str - Column with historical data.
+        :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
+        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
     Output:
-        pandas.DataFrame: a bootstrapped or normal prediction interval for df
+        pandas.DataFrame: Drift forecast and prediction intervals for df.
     """
     #extending the dates from df and storing the forecast in forecast_df
     forecast_df = forecast_dates(df,horizon)
@@ -103,16 +104,16 @@ def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, pred_width:list = [95,8
 
 
 
-def mean_pi(df:pd.DataFrame,target_col:str, horizon=int, pred_width:list = [95,80]) -> pd.DataFrame:
-
+def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data
-        :param target_col: str - column with historical data
-        :param horizon: int - Number of timesteps forecasted into the future
-        :param pred_width: list - 0 <= pred_width < 100 list of widths of prediction intervals
+        :param df: pandas.DataFrame - Historical time series data with dates as index.
+        :param target_col: str - Column with historical data.
+        :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
+        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
     Output:
-        pandas.DataFrame: a bootstrapped or normal prediction interval for df
+        pandas.DataFrame: Mean forecast and prediction intervals for df.
     """
 
     #extending the dates from df and storing the forecast in forecast_df
@@ -133,28 +134,28 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon=int, pred_width:list = [95,8
 
 
 
-def normal_benchmark_forecast(df:pd.DataFrame, target_col:str, method:str, horizon:int, period:int=1,
+def normal_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:int, period:int=1,
                               pred_width:list = [95,80]) -> pd.DataFrame:
     
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data
-        :param target_col: str - column with historical data
-        :param method: str - one of {'naive','drift','mean'}, the method to simulate the forecast
-        :param horizon: int - Number of timesteps forecasted into the future
-        :param period: int - Seasonal period
-        :param pred_width: list - 0 <= pred_width < 100 list of widths of prediction intervals
+        :param df: pandas.DataFrame - Historical time series data.
+        :param target_col: str - Column with historical data.
+        :param model: str - One of {'naive','drift','mean'}, the model to calculate the forecast.
+        :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
+        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
     Output:
-        pandas.DataFrame: a bootstrapped or normal prediction interval for df
+        pandas.DataFrame: Forecast and prediction intervals for df with the specified model.
     """
 
-    if method == 'naive':
+    if model == 'naive':
         forecast = naive_pi(df, target_col, horizon, period, pred_width)
     
-    elif method == 'drift':
+    elif model == 'drift':
         forecast = drift_pi(df,target_col, horizon, pred_width)
     
-    elif method == 'mean':
+    elif model == 'mean':
         forecast = mean_pi(df,target_col, horizon, pred_width)
 
     return forecast

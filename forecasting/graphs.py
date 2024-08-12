@@ -2,81 +2,119 @@
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pandas as pd
-from scipy.stats import normaltest
-from statsmodels.tsa.seasonal import STL
+from scipy.stats import normaltest, norm
+from statsmodels.tsa.seasonal import MSTL
 import numpy as np
 from .bootstrap_naive_models import bs_benchmark_forecast
-from .more_models import benchmark_fit, benchmark_forecast,model_dict
+from .more_models import benchmark_fit, benchmark_forecast, model_dict
 from .model_selection import forecast_metrics, cross_val
 from sklearn.metrics import *
 
 
 
-def resid_diagnostic(df:pd.DataFrame,target_col:str, method:str, period:int=1, **kwargs) -> go.Figure:
-    #fix legend (underneath first plot)
+def resid_diagnostic(df:pd.DataFrame,target_col:str, model:str, period:int=1, **kwargs) -> go.Figure:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param df_target_col: str - Column with historical data
-        :param method: str - one of {'naive','drift','mean','ETS','ARIMA'} to see the forecast against the data
-        :param **kwargs - Keyword arguments for the sktime functions AutoETS or AutoARIMA
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param df_target_col: str - Column with historical data.
+        :param model: str - Model used to perform the residual diagnostics, one of the keys from model_dict.
+        :param **kwargs - Keyword arguments for the sktime functions AutoETS or AutoARIMA.
     Outputs:
-        go.Figure - Subplots of the residuals, the ACF and a histogram of the residuals
+        go.Figure - Subplots of the residuals, the ACF and a histogram of the residuals.
     """
 
     plot_frame = pd.DataFrame()
 
-    fitted_forecast = benchmark_fit(df, target_col, method, period,**kwargs)
+    #calculating the residuals to analyse.
+    fitted_forecast = benchmark_fit(df, target_col, model, period)
     plot_frame['error'] = df[target_col] - fitted_forecast['fitted forecast']
 
-    cor_coeffs=[]
+    #making subplots, the bar chart of the residuals taking up both columns of the first row
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[[{"colspan": 2},None],[{}, {}]],
+        subplot_titles=("Residual plot","Autocorrelation function", "Residual histogram"),
+        vertical_spacing=0.18)
+    
 
-    #calculating the correlation coeficients for the lagged values for the ACF
+
+    #plotting the bar chart of the residuals
+    fig.add_trace(go.Bar(x=plot_frame.index, y=plot_frame['error'],
+                        marker_color='#00789c',
+                        showlegend=False),
+                    row=1, col=1)
+
+    #adding a trace of the mean value of the residuals, positioning the legend underneath the plot
+    fig.add_trace(go.Scatter(x=plot_frame.index,
+                            y=[np.mean(plot_frame['error'])] * len(df),
+                            name = 'Mean value',
+                            line=dict(color='black')),
+                            row = 1, col=1)
+
+    fig.update_traces(row=1, col=1, legend='legend2')
+
+    fig.update_layout({'legend2': dict(x=0.5,y=0.5,xanchor='center', yanchor="bottom")})
+
+
+
+
+    #calculating the correlation coeficients for the lagged values to plot the ACF
+    #and the bounds such that if the ACF is white noise, 95% of the bars should be withing these bounds
+    cor_coeffs=[]
 
     for i in range(0,len(df)):
         plot_frame['shift'] = plot_frame['error'].shift(i+1)
         cor_coeffs.append(plot_frame['error'].corr(plot_frame['shift']))
 
-
-    #plotting a bar chart of the residuals
-    fig = make_subplots(
-        rows=2, cols=2,
-        specs=[[{"colspan": 2},None],[{}, {}]],
-        subplot_titles=("Residual plot","Autocorrelation function", "Residual histogram"))
-
-    fig.add_trace(go.Bar(x=plot_frame.index, y=plot_frame['error'],
-                        marker_color='#00789c',
-                        showlegend=False),
-                    row=1, col=1)
-    
-    fig.add_trace(go.Scatter(x=plot_frame.index,
-                            y=[np.mean(plot_frame['error'])] * len(df),
-                            name = 'Mean value',
-                            line=dict(color='black')), row = 1, col=1)
-    
-    
-    #plotting the ACF
-    fig.add_trace(go.Bar(x=plot_frame.index, y=cor_coeffs,
+    fig.add_trace(go.Bar(y=cor_coeffs,
                         marker_color = '#00789c',
                         showlegend=False),
                     row=2, col=1)
                     
-    fig.add_trace(go.Scatter(x=plot_frame.index, y=[1.96 / np.sqrt(len(df))] * len(df),
+    fig.add_trace(go.Scatter(y=[1.96 / np.sqrt(len(df))] * len(df),
                             line=dict(color = '#d1495b', dash = 'dash'),
                             name = '95% bound'),
                     row=2, col=1)
                     
-    fig.add_trace(go.Scatter(x=plot_frame.index, y=[-1.96 / np.sqrt(len(df))] * len(df),
+    fig.add_trace(go.Scatter(y=[-1.96 / np.sqrt(len(df))] * len(df),
                             line=dict(color = '#d1495b', dash = 'dash'),
                             showlegend=False),
                     row=2, col=1)
-    
+
+    fig.update_traces(row=2,col=1,legend = 'legend3')
+
+    fig.update_layout({'legend3' : dict(x=0.23, y=-0.1, xanchor = 'center', yanchor='bottom')})
+
+
+
+
     #plotting a histogram of the residuals
     fig.add_trace(go.Histogram(x=plot_frame['error'],
                             opacity=0.7,
                             marker_color='#66a182',
-                            nbinsx=200,showlegend=False),
+                            nbinsx=100,
+                            showlegend=False),
                     row=2, col=2)
+
+
+    #plotting a normal distribution with standard deviation the same as the residuals on the histogram
+    sd = np.std(plot_frame['error'].dropna())
+    x = np.linspace(start=plot_frame['error'].min()-1, stop=plot_frame['error'].max()+1, num=100)
+
+    #finding the scales for the distribution to plot on the histogram
+    bin_width = (df[target_col].values.max() - df[target_col].values.min()) / 100
+    N = len(plot_frame['error'].dropna())
+
+    fig.add_trace(go.Scatter(x=x,y=norm.pdf(x, loc=0, scale=sd ** 2) * N * bin_width,
+                            name = 'Theoretical normally distributed residuals, standard deviation {:.2f}'.format(sd)),
+                    row=2,col=2)
+    
+    #positioning the legend below the plot    
+    fig.update_traces(row=2,col=2,legend='legend4')
+    fig.update_layout({'legend4' : dict(x=0.77,y=-0.1, xanchor = 'center', yanchor='bottom')})
+
+
+
 
     fig.update_xaxes(title_text='Date', row=1, col=1)
     fig.update_yaxes(title_text='Error from the forecast', row=1, col=1)
@@ -89,32 +127,27 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, method:str, period:int=1, *
 
     fig.update_layout(height=1000,
                     title_text="Residual Diagnostics",
-                    template='plotly_white',
-                    legend=dict(orientation="h",  
-                                xanchor="center", 
-                                yanchor="top",  
-                                x=0.5,  
-                                y=-0.2))
-    
+                    template='plotly_white')
+
     #calculating the 2-sided chi-squared p-value for a normal hypothesis test on the residuals
-    p_value = normaltest(plot_frame['error']).pvalue
-    print(f'The p-value for the 2-sided chi-squared test for a normal hypotheis test on the residuals is {p_value}')
+    p_value = normaltest(plot_frame['error'].values).pvalue
+    print('The 2-sided chi-squared probability for a normal hypotheis test on the residuals: {:.4f}'.format(p_value))
 
     return fig
 
 
 
-def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int=1, **kwargs) -> go.Figure:
+def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1, **kwargs) -> go.Figure:
     
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param target_col: str - The column of df the observed data is located
-        :param method: str - one of {'naive','drift','mean','ETS','ARIMA'} to see the forecast against the data
-        :param period: int - seasonal period
-        :param **kwargs - Keyword arguments for the sktime functions AutoETS or AutoARIMA
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with Historical data.
+        :param model: str - Model used to calculate the fitted forecast, one of the keys from model_dict.
+        :param period: int - Seasonal period.
+        :param **kwargs - Keyword arguments for the selected model.
     Ouputs:
-        go.Figure - A plot of the observed data and the fit of the forecast selected
+        go.Figure - A plot of the observed data and the fit of the forecast selected.
     """
 
     fig=go.Figure()
@@ -123,8 +156,8 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int=1
                              line=dict(color='#00789c'),
                              name='Observed data'))
 
-    #calculating the fitted forecast
-    fitted_forecast = benchmark_fit(df,target_col, method, period, **kwargs)
+    #calculating the fitted forecast for the selected model
+    fitted_forecast = benchmark_fit(df,target_col, model, period, **kwargs)
 
 
     fig.add_trace(go.Scatter(x=df.index,y=fitted_forecast['fitted forecast'],
@@ -132,7 +165,7 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int=1
                         name='Fitted forecast'))
     
     fig.update_layout(height=600,
-                    title_text=f'Observed data and fitted forecast with {method} method',
+                    title_text=f'Observed data and {model} fitted forecast',
                     legend=dict(orientation="h",  
                                 xanchor="center", 
                                 yanchor="top",  
@@ -148,72 +181,90 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,method:str,period:int=1
 
 
 
-def decomp(df:pd.DataFrame, target_col:str, period:int, **STLkwargs) -> tuple:
+def decomp(df:pd.DataFrame, target_col:str, period, **MSTLkwargs) -> tuple[pd.Series]:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param target_col: str - The column of df the observed data is located
-        :param period: int - seasonal period
-        :param **STLkwargs - keyword arguments for the statsmodels STL function
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with historical data.
+        :param period: int ot list - Seasonal period.
+        :param **MSTLkwargs - Keyword arguments for the statsmodels MSTL class.
     Ouputs:
-        tuple: the observed data decomposed into the trend, seasonal and remainder data using statsmodels STL
+        tuple: the observed data decomposed into the trend, seasonal and remainder data using statsmodels MSTL.
     """
 
-    stl = STL(df[target_col],period = period, **STLkwargs).fit()
-    trend = stl.trend
-    seasonal = stl.seasonal
-    remainder = stl.resid
+    mstl = MSTL(df[target_col],periods = period, **MSTLkwargs).fit()
+    trend = mstl.trend
+    seasonal = mstl.seasonal
+    remainder = mstl.resid
 
     return trend, seasonal, remainder
 
 
 
-def decomp_plot(df:pd.DataFrame, target_col:str, period:int, **STLkwargs) -> go.Figure:
+def decomp_plot(df:pd.DataFrame, target_col:str, period, **MSTLkwargs) -> go.Figure:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param target_col: str - The column of df the observed data is located
-        :param period: int - seasonal period
-        :param **STLkwargs - keyword arguments for the statsmodels STL function
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with historical data.
+        :param period: int or list - Seasonal period.
+        :param **MSTLkwargs - Keyword arguments for the statsmodels MSTL class.
     Ouputs:
-        go.Figure - A plot of the observed data and the fit of the forecast selected
+        go.Figure - A plot of the observed data and its components, trend, seasonal and remainder.
     """
 
-    (trend, seasonal, remainder) = decomp(df,target_col,period,**STLkwargs)
+    #decomposing the time series, creating multiple plots for the seasonal data.
+    (trend, seasonal, remainder) = decomp(df,target_col,period,**MSTLkwargs)
 
-    fig = make_subplots(
-    rows=4, cols=1,
-    subplot_titles=("Observed data","Trend", "Seasonal", "Remainder"))
+    seasonal = pd.DataFrame(seasonal, index = df.index)
+
+    seasonal_components = len(seasonal.columns)
+    no_rows = seasonal_components + 3
+    
+
+    fig = make_subplots(rows=no_rows,
+                        cols=1,
+                        subplot_titles=["Observed data","Trend"] + seasonal.columns.to_list() + ["Remainder"],
+                        horizontal_spacing=0.01)
 
     fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
                              name = 'Observed data'),
                     row=1, col=1)
-
-    fig.add_trace(go.Scatter(x=trend.index, y=trend.values,
-                             showlegend=False),
-                    row=2, col=1)
     
-    fig.add_trace(go.Scatter(x=seasonal.index,y=seasonal.values,
-                             name = 'Observed data'),
-                    row=3, col=1)
-    
-    fig.add_trace(go.Scatter(x=remainder.index, y=remainder.values,
-                             name = 'Observed data'),
-                    row=4, col=1),
-
     fig.update_xaxes(title_text='Date', row=1, col=1)
     fig.update_yaxes(title_text=target_col, row=1, col=1)
 
+    fig.add_trace(go.Scatter(x=df.index, y=trend.values,
+                            showlegend=False),
+                    row=2, col=1)
+    
     fig.update_xaxes(title_text='Date', row=2, col=1)
     fig.update_yaxes(title_text=target_col, row=2, col=1)
+    
+    #iterating through each seasonal component and creating a plot
+    row_no = 3
 
-    fig.update_xaxes(title_text='Date', row=3, col=1)
-    fig.update_yaxes(title_text=target_col, row=3, col=1)
+    for column in seasonal.columns:
+        
+        fig.add_trace(go.Scatter(x=df.index, y=seasonal[column].values,
+                                name = 'Observed data'),
+                        row=row_no, col=1)
+        
+        fig.update_xaxes(title_text='Date', row=row_no, col=1)
+        fig.update_yaxes(title_text=target_col, row=row_no, col=1)
+        
+        row_no += 1
 
-    fig.update_xaxes(title_text='Date', row=4, col=1)
-    fig.update_yaxes(title_text=target_col, row=4, col=1)
 
-    fig.update_layout(height=2000,
+    
+    fig.add_trace(go.Scatter(x=df.index, y=remainder.values,
+                             name = 'Observed data'),
+                  row=no_rows, col=1)
+    
+    fig.update_xaxes(title_text='Date', row=no_rows, col=1)
+    fig.update_yaxes(title_text=target_col, row=no_rows, col=1)
+
+
+    fig.update_layout(height=1200,
                       showlegend=False, 
                       title_text="Decomposition of data", 
                       template='plotly_white',
@@ -230,11 +281,11 @@ def decomp_plot(df:pd.DataFrame, target_col:str, period:int, **STLkwargs) -> go.
 def seasonal_plot(df:pd.DataFrame,target_col:str, period:int) -> go.Figure:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param target_col: str - The column of df the observed data is located
-        :param period: int - seasonal period
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with historical data.
+        :param period: int - Seasonal period.
     Ouputs:
-        go.Figure - A plot of all of the seasonal periods
+        go.Figure - A plot comparing all seasonal periods.
     """
 
     #creating the x-axis for the plot
@@ -267,13 +318,14 @@ def seasonal_plot(df:pd.DataFrame,target_col:str, period:int) -> go.Figure:
 def seasonal_change(df:pd.DataFrame, target_col:str, period:int) -> go.Figure:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param target_col: str - The column of df the observed data is located
-        :param period: int - seasonal period
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with historical data.
+        :param period: int - Seasonal period.
     Ouputs:
-        go.Figure - A plot of each stage of the period and how it changes over time
+        go.Figure - A plot comparing each stage of each season.
     """
     
+    #creating titles for each plot
     titles = []
     for i in range(1,period+1):
         titles.append(f"Stage {i}")
@@ -283,7 +335,7 @@ def seasonal_change(df:pd.DataFrame, target_col:str, period:int) -> go.Figure:
             subplot_titles= titles,
             horizontal_spacing=0.043)
 
-    #creating a plot for each stage in the season, and checking if there is an incomplete season 
+    #creating a plot for each stage in the season, checking if there is an incomplete season 
     remainder = len(df) % period
 
     for plot_no in range(0,period):
@@ -312,14 +364,13 @@ def seasonal_change(df:pd.DataFrame, target_col:str, period:int) -> go.Figure:
 def future_forecast_data(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFrame, fill=True) -> go.Figure:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param target_col: str - The column of df the observed data is located
-        :param output_forecast: pd.DataFrame - a data frame with the forecasted dates and the forecast,
-                                        the lower and the upper bounds for the prediction intervals as columns,
-                                        as outputted from prediction_intervals
-        :param fill: bool - Toggle whether to fill the gap between each prediction interval
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with historical data.
+        :param output_forecast: pandas.DataFrame - Data frame with the desired forecast and the lower and upper bounds of the prediction intervals as columns,
+                                                   as outputted from the benchmark forecasts.
+        :param fill: bool - Toggle whether to fill the space between each prediction interval.
     Ouputs:
-        go.Figure - A plot of the oberserved data, the forecast and the prediction interval
+        go.Figure - A plot of the oberserved data, the forecast and the prediction intervals.
     """
     
     fig=go.Figure()
@@ -327,10 +378,10 @@ def future_forecast_data(df:pd.DataFrame, target_col:str, output_forecast:pd.Dat
     fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
                              line=dict(color='#00789c'), name = 'Observed Data'))
     
+    #iterating through the columns for each prediction interval and plotting them with varying opacities
+    #and filling the space between the predcition intervals if fill is True
     no_columns = len(output_forecast.columns)
 
-
-    #plotting the prediction intervals using the columns of output_forecast,filling the space between if fill is True
     for index in range(1,no_columns,2):
         lower_pi_name = output_forecast.columns[index]
         upper_pi_name = output_forecast.columns[index+1]
@@ -381,26 +432,23 @@ def future_forecast_data(df:pd.DataFrame, target_col:str, output_forecast:pd.Dat
 
 
 
-def future_forecast(df:pd.DataFrame,target_col:str, method:str, horizon:int, period:int=1,
-                    bootstrap:bool = False, repetitions:int = 100, pred_width:list = [95,80], fill=True,**kwargs) -> go.Figure:
+def future_forecast(df:pd.DataFrame,target_col:str, model:str, horizon:int, period:int=1, pred_width:list = [95,80], fill=True,**kwargs) -> go.Figure:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data
-        :param target_col: str - column with historical data
-        :param method: str - one of {'naive','drift','mean','ETS','ARIMA'}, the method to simulate the forecast
-        :param horizon: int - Number of timesteps forecasted into the future
-        :param period: int - Seasonal period
-        :param bootstrap: bool - toggle bootstrap or normal prediction interval
-        :param repetitions: int - Number of bootstrap repetitions
-        :param pred_width: list - 0 <= pred_width < 100 list of widths of prediction intervals
-        :param fill: bool - Toggle whether to fill the gap between each prediction interval
-        :param **kwargs - Keyword arguments for the sktime functions AutoETS or AutoARIMA
+        :param df: pandas.DataFrame - Historical time series data.
+        :param target_col: str - Column with historical data.
+        :param model: str - The model to forecast, one of the keys from model_dict.
+        :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
+        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
+        :param fill: bool - Toggle whether to fill the space between each prediction interval.
+        :param **kwargs - Keyword arguments for the chosen model.
 
     Output:
-        pandas.DataFrame: a bootstrapped or normal prediction interval for df
+        go.Figure - A plot of the oberserved data, the forecast and the prediction intervals.
     """
-
-    output_forecast = benchmark_forecast(df,target_col, method, horizon, period, bootstrap,repetitions, pred_width,**kwargs)
+    #calulating the forecast for the selected model and plotting this using the previous function
+    output_forecast = benchmark_forecast(df,target_col,horizon,model,period,pred_width,**kwargs)
 
     fig = future_forecast_data(df,target_col, output_forecast,fill)
 
@@ -408,24 +456,24 @@ def future_forecast(df:pd.DataFrame,target_col:str, method:str, horizon:int, per
 
 
 
-def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str, repetitions:int=100,period:int=1, pred_width:list = [95,80]) -> go.Figure:
+def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, model:str, repetitions:int=100,period:int=1, pred_width:list = [95,80]) -> go.Figure:
     """
     Inputs:
-        :param df: pd.DataFrame - Historical time series data with date-time index
-        :param target_col: str - The column of df the observed data is located
-        :param horizon: int - number of timesteps forecasted into the future
-        :param model: str - one of {'naive','drift','mean'}, the method to simulate the forecast
-        :param repetitions: int - Number of bootstrap repetitions
-        :param period: int - Seasonal period
-        :param pred_width : list - 0 <= pred_width < 100 list of widths of prediction intervals
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with historical data.
+        :param horizon: int - Number of timesteps forecasted into the future.
+        :param model: str - One of {'naive','drift','mean'}, the model to simulate the forecast.
+        :param repetitions: int - Number of bootstrap repetitions.
+        :param period: int - Seasonal period.
+        :param pred_width : list, 0 <= pred_width < 100 - List of widths of prediction intervals.
     Ouputs:
-        go.Figure - A plot of all simulated bootstrapped forecasts and the prediction interval
+        go.Figure - A plot of all simulated bootstrapped forecasts and the prediction interval.
     """
 
     #storing each simulation, the forecast and the prediction intervals
     bs_fig = go.Figure()
 
-    output_forecast, forecast_df = bs_benchmark_forecast(df, target_col, method, horizon, period,
+    output_forecast, forecast_df = bs_benchmark_forecast(df, target_col, model, horizon, period,
                                                          repetitions, pred_width, simulations=True)
     
     #plotting each simulation
@@ -467,54 +515,47 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, method:str
     return bs_fig
 
 
-def cross_val_graph(df:pd.DataFrame,target_col:str,n_splits:int=5,test_size:int=None, model:dict = model_dict) -> go.Figure:
+def cross_val_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1,n_splits:int=5,test_size:int=None,**kwargs) -> go.Figure:
     """
     Test forecasting method/s on observed data
 
     Inputs:
-        :param df: pandas.DataFrame - Univariate time series dataset.
-        :param target_col:str - Column with historical data
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col:str - Column with historical data.
         :param n_splits: int - Number of folds.
         :param test_size: int -  Forecast horizon during each fold.
-        :param model: dict - a dictionary of length one with the model (str) as a key and its function as the value
+        :param model: dict - The model to see the cross validation of, one of the keys from model_dict
+        :param **kwargs - Keyword arguments for the selected model
     Outputs:
-        Cross validation summary (pandas.DataFrame)
+        go.Figure - A plot of each fold and it's respective forecast against the observed data
     """
 
-    fig = make_subplots(
-            rows=len(model), cols=1,
-            subplot_titles= [method for method in model])
+    fig = go.Figure()
 
-    train_test_dict = cross_val(df,target_col,n_splits, test_size, model)
-    row_no=1
+    #running cross validation for the selected model
+    train_test_dict = cross_val(df,target_col,period,n_splits, test_size,{model:model_dict[model]},**kwargs)
 
-    for method in model:
+    #plotting the observed data and forecast from the cross validation 
+    fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
+                                name = 'Observed data',
+                                line = dict(color = '#00789c')))
 
-        fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
-                                 name = 'Observed data',
-                                 line = dict(color = '#00789c')),
-                                 row = row_no, col=1)
+    fig.add_trace(go.Scatter(x=train_test_dict[model].index, y=train_test_dict[model]['forecast'],
+                                name  = f'{model} forecast',
+                                line = dict(color = '#d1495b')))
+    
+    fig.update_xaxes(title_text = 'Date')
+    fig.update_yaxes(title_text = target_col)
 
-        fig.add_trace(go.Scatter(x=train_test_dict[method].index, y=train_test_dict[method]['forecast'],
-                                 name  = f'{method} forecast',
-                                 line = dict(color = '#d1495b')),
-                                 row=row_no, col=1)
-        
-        fig.update_xaxes(title_text = 'Date',row=row_no, col=1)
-        fig.update_yaxes(title_text = target_col, row=row_no, col=1)
+    #finding the first first dates for each fold and plotting these as vertical lines
+    fold_min_stats = train_test_dict[model].copy().reset_index().groupby(by='fold').min()
+    model_retrained = fold_min_stats.iloc[:,0].to_list()
 
-        fold_min_stats = train_test_dict[method].copy().reset_index().groupby(by='fold').min()
-        model_retrained = fold_min_stats.iloc[:,0].to_list()
+    for retrained in model_retrained:
 
-        for retrained in model_retrained:
-
-            fig.add_vline(retrained, line_width=1.5,
-                          line_dash="dash",
-                          line_color="green",
-                          row=row_no, col=1)
-
-        
-        row_no += 1
+        fig.add_vline(retrained, line_width=1.5,
+                        line_dash="dash",
+                        line_color="green")
 
     fig.update_layout(template = 'plotly_white',
                       legend=dict(orientation="h",  
@@ -526,33 +567,33 @@ def cross_val_graph(df:pd.DataFrame,target_col:str,n_splits:int=5,test_size:int=
     return fig
 
 
-def metric_bar(df:pd.DataFrame,target_col:str, eval_metric:str='Mean squared error', n_splits:int=5, test_size:int=None, model:dict = model_dict) -> go.Figure:
+def metric_bar(df:pd.DataFrame,target_col:str, period=1, eval_metric:str='mean_squared_error', n_splits:int=5, test_size:int=None, model:dict = model_dict) -> go.Figure:
     
     """
-    Cross validation (k-fold) for time series data.
-
     Inputs:
-        :param df: pandas.DataFrame - Univariate time series dataset.
-        :param target_col: str - Column with historical data
-        :param eval_metric - one of {'Mean absolute error', 'Mean absolute percentage error', 'Mean squared error', 'Max error'},
-                             the metric to evaluate each model by
+        :param df: pandas.DataFrame - Historical time series data with date-time index.
+        :param target_col: str - Column with historical data.
+        :param eval_metric - one of {'mean_absolute_error', 'mean_absolute_percentage_error', 'mean_squared_error', 'max_error'},
+                             the metric to evaluate each model by.
         :param n_splits: int - Number of folds.
         :param test_size: int -  Forecast horizon during each fold.
-        :param model: dict - a dictionary with the models (str) as keys and their respective functions as values
-        **modelkwargs - keyword arguments for the model chosen
+        :param model: dict - Dictionary with the models (str) as keys and their respective functions as values.
+        **modelkwargs - Keyword arguments for the model chosen.
 
     Outputs:
-        Cross validation summary (pandas.DataFrame)
+        go.Figure - Bar graph comparing the value of the evaluation metric for each model.
     """
-    
-    eval_frame = forecast_metrics(df,target_col, n_splits, test_size, model)
 
-    eval = eval_frame[eval_metric]
+    #finding the value of the evaluation metric for each model
+    eval_frame = forecast_metrics(df,target_col,period, n_splits, test_size, model)
+    eval_scores = eval_frame[eval_metric]
 
     fig= go.Figure()
 
-    fig = fig.add_trace(go.Bar(x = [key for key in model], y = eval,
+    #plotting these values
+    fig = fig.add_trace(go.Bar(x = [key for key in model], y = eval_scores,
                  marker_color = '#00789c'))
+    
     fig.update_layout(title_text = f'Values of the {eval_metric} for the methods below',
                       template = 'plotly_white')
 
