@@ -7,6 +7,12 @@ from scipy.stats import norm
 
 def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_width:list = [95,80]) -> pd.DataFrame:
     """
+    Uses the forecast with extended dates and standard deviation in each step of the forecast
+    to calculate the prediction intervals for the forecast.
+
+    The standard deviation for each forecast step is calculated using the standard deviation of the residuals
+    for the model forecast.
+
     Inputs:
         :param forecast_df: pandas.DataFrame - Data frame with extended dates and forecasted points.
         :param horizon: int - Number of timesteps forecasted into the future.
@@ -42,6 +48,9 @@ def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_widt
 def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
    
     """
+    Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
+    from df, with the naive forecast and upper and lower bounds for the prediction intervals as columns.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with dates as index.
         :param target_col: str - Column with historical data.
@@ -75,6 +84,9 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_wi
 
 def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
     """
+    Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
+    from df, with the drift forecast and upper and lower bounds for the prediction intervals as columns.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with dates as index.
         :param target_col: str - Column with historical data.
@@ -106,6 +118,9 @@ def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int=1, pred_widt
 
 def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
     """
+    Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
+    from df, with the mean forecast and upper and lower bounds for the prediction intervals as columns.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with dates as index.
         :param target_col: str - Column with historical data.
@@ -136,8 +151,9 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int=1, pred_widt
 
 def normal_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:int, period:int=1,
                               pred_width:list = [95,80]) -> pd.DataFrame:
-    
     """
+    Creates a forecast of the desired model using the forecast functions.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column with historical data.

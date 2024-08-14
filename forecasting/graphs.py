@@ -7,7 +7,7 @@ from statsmodels.tsa.seasonal import MSTL
 import numpy as np
 from .bootstrap_naive_models import bs_benchmark_forecast
 from .more_models import benchmark_fit, benchmark_forecast, model_dict
-from .model_selection import forecast_metrics, cross_val
+from .model_selection import cross_val
 from sklearn.metrics import *
 
 
@@ -515,7 +515,7 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, model:str,
     return bs_fig
 
 
-def cross_val_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1,n_splits:int=5,test_size:int=None,**kwargs) -> go.Figure:
+def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = model_dict,period:int=1,n_splits:int=5,test_size:int=None,**kwargs) -> go.Figure:
     """
     Test forecasting method/s on observed data
 
@@ -524,8 +524,8 @@ def cross_val_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1,n_spli
         :param target_col:str - Column with historical data.
         :param n_splits: int - Number of folds.
         :param test_size: int -  Forecast horizon during each fold.
-        :param model: dict - The model to see the cross validation of, one of the keys from model_dict
-        :param **kwargs - Keyword arguments for the selected model
+        :param models: dict - The models to compare the cross validation of
+        :param **kwargs - Keyword arguments for the selected models
     Outputs:
         go.Figure - A plot of each fold and it's respective forecast against the observed data
     """
@@ -533,68 +533,42 @@ def cross_val_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1,n_spli
     fig = go.Figure()
 
     #running cross validation for the selected model
-    train_test_dict = cross_val(df,target_col,period,n_splits, test_size,{model:model_dict[model]},**kwargs)
+    cross_val_frame = cross_val(df,target_col,period,n_splits,test_size,models,**kwargs)
 
     #plotting the observed data and forecast from the cross validation 
     fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
-                                name = 'Observed data',
-                                line = dict(color = '#00789c')))
-
-    fig.add_trace(go.Scatter(x=train_test_dict[model].index, y=train_test_dict[model]['forecast'],
-                                name  = f'{model} forecast',
-                                line = dict(color = '#d1495b')))
-    
-    fig.update_xaxes(title_text = 'Date')
-    fig.update_yaxes(title_text = target_col)
+                            name = 'Observed data',
+                            line = dict(color = '#00789c')))
 
     #finding the first first dates for each fold and plotting these as vertical lines
-    fold_min_stats = train_test_dict[model].copy().reset_index().groupby(by='fold').min()
-    model_retrained = fold_min_stats.iloc[:,0].to_list()
+
+    fold_min_stats = cross_val_frame.copy().reset_index().groupby(by='fold').min()
+    model_retrained = fold_min_stats.iloc[:,1].to_list()
 
     for retrained in model_retrained:
 
-        fig.add_vline(retrained, line_width=1.5,
-                        line_dash="dash",
-                        line_color="green")
+            fig.add_vline(retrained, line_width=1.5,
+                            line_dash="dash",
+                            line_color="green")
+
+
+    #iterating throught the models and plotting them
+    for model in models:
+
+            forecast = cross_val_frame.loc[model]['forecast']
+
+            fig.add_trace(go.Scatter(x=forecast.index, y=forecast,
+                                     name  = f'{model} forecast'))
+
+
+    fig.update_xaxes(title_text = 'Date')
+    fig.update_yaxes(title_text = target_col)
 
     fig.update_layout(template = 'plotly_white',
-                      legend=dict(orientation="h",  
-                                xanchor="center", 
-                                yanchor="top",  
-                                x=0.5,  
-                                y=-0.2))
-    
-    return fig
-
-
-def metric_bar(df:pd.DataFrame,target_col:str, period=1, eval_metric:str='mean_squared_error', n_splits:int=5, test_size:int=None, model:dict = model_dict) -> go.Figure:
-    
-    """
-    Inputs:
-        :param df: pandas.DataFrame - Historical time series data with date-time index.
-        :param target_col: str - Column with historical data.
-        :param eval_metric - one of {'mean_absolute_error', 'mean_absolute_percentage_error', 'mean_squared_error', 'max_error'},
-                             the metric to evaluate each model by.
-        :param n_splits: int - Number of folds.
-        :param test_size: int -  Forecast horizon during each fold.
-        :param model: dict - Dictionary with the models (str) as keys and their respective functions as values.
-        **modelkwargs - Keyword arguments for the model chosen.
-
-    Outputs:
-        go.Figure - Bar graph comparing the value of the evaluation metric for each model.
-    """
-
-    #finding the value of the evaluation metric for each model
-    eval_frame = forecast_metrics(df,target_col,period, n_splits, test_size, model)
-    eval_scores = eval_frame[eval_metric]
-
-    fig= go.Figure()
-
-    #plotting these values
-    fig = fig.add_trace(go.Bar(x = [key for key in model], y = eval_scores,
-                 marker_color = '#00789c'))
-    
-    fig.update_layout(title_text = f'Values of the {eval_metric} for the methods below',
-                      template = 'plotly_white')
+                    legend=dict(orientation="h",  
+                            xanchor="center", 
+                            yanchor="top",  
+                            x=0.5,  
+                            y=-0.2))
 
     return fig

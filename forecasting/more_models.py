@@ -11,6 +11,8 @@ from statsmodels.tsa.seasonal import MSTL
 def prophet_fit(df:pd.DataFrame, target_col:str,**kwargs) -> pd.DataFrame:
     
     """
+    Created a fitted forecast using the facebook prophet model.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -34,6 +36,8 @@ def prophet_fit(df:pd.DataFrame, target_col:str,**kwargs) -> pd.DataFrame:
 def prophet_forecast(df:pd.DataFrame, target_col:str, horizon:int, period:int = 1, pred_width:list = [95,80], **kwargs) -> pd.DataFrame:
     
     """
+    Creates a facebook prophet forecast with the desired predicton intervals.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -51,28 +55,46 @@ def prophet_forecast(df:pd.DataFrame, target_col:str, horizon:int, period:int = 
     data = {'ds':df.index, 'y':df[target_col].values}
     input_df = pd.DataFrame(data)
 
-    model = Prophet(**kwargs)
+    #entering the first prediction interval width manually to store the forecast if pred_width is not empty
+    if pred_width != []:
+        first_width = pred_width[0]
+    else:
+        first_width = 80
+
+    model = Prophet(**kwargs, interval_width=first_width / 100)
     model.fit(input_df)
     future = model.make_future_dataframe(periods=horizon)
 
     forecast = model.predict(future)
+
     output_forecast.index = future['ds'].iloc[-horizon:]
     output_forecast['forecast'] = forecast['yhat'].iloc[-horizon:].values
+
+    if pred_width != []:
+
+        output_forecast[[f'{first_width}% lower_pi',
+                         f'{first_width}% upper_pi']] = forecast[['yhat_lower','yhat_upper']].iloc[-horizon:].values
+
     
-    #storing each prediction interval
-    for width in pred_width:
+    #storing each other prediction interval
+    for width in pred_width[1:]:
+
         model = Prophet(**kwargs, interval_width=width/100)
         model.fit(input_df)
         future = model.make_future_dataframe(periods=horizon)
         forecast = model.predict(future)
 
-        output_forecast[[f'{width}% lower_pi', f'{width}% upper_pi']] = forecast[['yhat_lower','yhat_upper']].iloc[-horizon:].values
+        output_forecast[[f'{width}% lower_pi',
+                         f'{width}% upper_pi']] = forecast[['yhat_lower','yhat_upper']].iloc[-horizon:].values
 
     return output_forecast
 
 
 def ETS_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoETS_kwargs) -> pd.DataFrame:
     """
+    Creates a fitted exponential smoothing forecast ising the statsforecast AutoETS class,
+    which auto-selecs paramteres for the best forecast.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
@@ -99,8 +121,10 @@ def ETS_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoETS_kwargs) -> 
 
 
 def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_width:list=[95,80],**AutoETS_kwargs) -> pd.DataFrame:
-
     """
+    Creates a exponential smoothing forecast ising the statsforecast AutoETS class,
+    which auto-selecs paramteres for the best forecast.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
@@ -133,6 +157,9 @@ def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_
 
 def ARIMA_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoARIMA_kwargs) -> pd.DataFrame:
     """
+    Creates a fitted ARIMA forecast ising the statsforecast AutoARIMA class,
+    which auto-selecs paramteres for the best forecast.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
@@ -160,6 +187,9 @@ def ARIMA_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoARIMA_kwargs)
 
 def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pred_width:list = [95,80], **AutoARIMA_kwargs) -> pd.DataFrame:
     """
+    Creates a ARIMA forecast ising the statsforecast AutoARIMA class,
+    which auto-selecs paramteres for the best forecast.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
@@ -191,11 +221,18 @@ def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pr
 
 def MSTL_forecast(df:pd.DataFrame, target_col:str,horizon:int, period=1, pred_width:list = [95,80], trend_forecaster:str = 'ETS' ,**kwargs) -> pd.DataFrame:
     """
+    Creates a MSTL forecast ising the statsmodels MSTL function.
+
+    This decomposes the time series into trend, seasonal, and residual components,
+    and forecasts the trend using the desired model.
+
+    If no model is inputted, it defaults to using exponential smoothing to forecast the trend.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
         :param horizon: int - Number of timesteps forecasted into the future.
-        :param period: int or list - Seasonal periods in a list.
+        :param period: int or list - Seasonal period/s.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
         :param trend_forecaster: str - The model (a key from model_dict) used to forecast the trend.
         :param **kwargs - Keyword arguments for trend_forecaster.
@@ -203,8 +240,11 @@ def MSTL_forecast(df:pd.DataFrame, target_col:str,horizon:int, period=1, pred_wi
         pandas.DataFrame: MSTL forecast and prediction intervals for the trend of df.
     """
 
+    if period == 1:
+        return 'The time series must have periodicity to decompose'
+
     #decomposing df and finding the trend
-    mstl = MSTL(df[target_col],periods=period).fit()
+    mstl = MSTL(df[target_col],periods=period,).fit()
     trend = pd.DataFrame(mstl.trend.values, index=df.index, columns=['trend'])
 
     forecaster = model_dict[trend_forecaster]
@@ -220,24 +260,27 @@ def MSTL_forecast(df:pd.DataFrame, target_col:str,horizon:int, period=1, pred_wi
 
 model_dict = {'naive':naive_pi, 'drift':drift_pi, 'mean':mean_pi,
               'ETS':ETS_forecast, 'ARIMA':ARIMA_forecast,
-              'prophet':prophet_forecast}
+              'prophet':prophet_forecast, 'MSTL':MSTL_forecast}
 
 
 
-def benchmark_forecast(df:pd.DataFrame, target_col:str, horizon:int, model:str, period:int=1, pred_width:list=[], **kwargs) -> pd.DataFrame:
-    
+def benchmark_forecast(df:pd.DataFrame, target_col:str, horizon:int, model:str, period:int=1, pred_width:list=[95,80], **kwargs) -> pd.DataFrame:
     """
+    Created forecast and prediction intervals of the desired model.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column with historical data.
         :param horizon: int - Number of timesteps forecasted into the future.
         :param model: str - The model (a key from model_dict) to forecast the trend.
         :param period: int - Seasonal period.
-        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals, defaults to none for faster forecasting.
+        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
         :param **kwargs - Keyword arguments for the chosen model.
     Output:
         pandas.DataFrame: A forecast for df of the chosen model.
     """
+
+    #passing MSTL if period is 1, as MSTL does not take this as an argument
 
     forecaster = model_dict[model]
     
@@ -292,6 +335,3 @@ def benchmark_fit(df:pd.DataFrame, target_col:str, model:str, period:int=1, **kw
         fitted_forecast = prophet_fit(df,target_col, **kwargs)
 
     return fitted_forecast
-
-
-

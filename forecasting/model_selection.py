@@ -11,7 +11,10 @@ import time
 eval_metrics = [mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, max_error]
 
     
-def cross_val(df:pd.DataFrame, target_col:str, period:int=1, n_splits:int=5, test_size:int=None, models:dict = model_dict,**kwargs) -> dict[str:pd.DataFrame]:
+def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
+              n_splits:int=5, test_size:int=None,
+              models:dict = model_dict, time_taken:bool=False,**kwargs) -> pd.DataFrame:
+    
     """
     Test forecasting method/s on observed data
 
@@ -22,14 +25,14 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1, n_splits:int=5, tes
         :param n_splits: int - Number of folds.
         :param test_size: int -  Forecast horizon during each fold.
         :param model: dict - A dictionary with the models (str) as keys and their respective functions as values.
+        :param time_taken: bool - Toggle woether to print the time taken for each fold of each model
         :param **kwargs - Keyword arguments to be used for every model.
     Outputs:
-        dict: A dictionary with the models as keys and their respective cross validation summary as values.
+        pandas.DataFrame: A dataframe with a the models and dates as a multi-index and their respective forecast, errors and folds as columns
     """
 
     #defining a dictionary which will be the output of the cross validation
     output_dict = {}
-
 
     #iterating through the model dictionary
     for model in models:
@@ -44,22 +47,27 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1, n_splits:int=5, tes
         #creating a list to store each fold
         cv_summary = []
 
-        print(f'{model}:')
+        forecaster = models[model]
+
+        if time_taken:
+            print(f'{model}:')
+
 
         for fold, (train, test) in enumerate(cross_val_idx):
 
             #measuring time elapsed for each fold
             start = time.time()
 
+            #copying the test data in df to cv_output to compare to the forecast
             cv_output = df[target_col].copy().iloc[test].to_frame()
-
+    
             #forecasting from training data
-            forecast = benchmark_forecast(df = df.copy().iloc[train],
-                                          target_col = target_col,
-                                          horizon =  len(test),
-                                          model = model,
-                                          period = period,
-                                          **kwargs)
+            forecast = forecaster(df = df.copy().iloc[train],
+                                  target_col = target_col,
+                                  horizon =  len(test),
+                                  period = period,
+                                  pred_width = [],
+                                  **kwargs)
 
             cv_output['forecast'] = forecast['forecast'].values
             cv_output['fold'] = fold
@@ -67,16 +75,23 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1, n_splits:int=5, tes
             cv_summary.append(cv_output)
             
             end = time.time()
-            print(f'fold {fold}: {end-start}')
+
+            if time_taken:
+                print('fold {fold_no}: {time:.4f}'.format(fold_no=fold,time=end-start))
 
         output_dict[model] = pd.concat(cv_summary)
 
 
-    return output_dict
+    output_frame = pd.concat(output_dict,names = ['model',])
 
+    return output_frame
+
+
+
+"""
 def forecast_metrics(df:pd.DataFrame,target_col:str,period:int=1, n_splits:int=5, test_size:int=None, models:dict = model_dict,**kwargs) -> pd.DataFrame:
     
-    """
+    
     Cross validation (k-fold) for time series data.
 
     Inputs:
@@ -89,7 +104,7 @@ def forecast_metrics(df:pd.DataFrame,target_col:str,period:int=1, n_splits:int=5
         :param **kwargs - Keyword arguments to be used for every model.
     Outputs:
         pandas.DataFrame - A value of each evaluation metric for each model using cross_val.
-    """
+    
 
     #cross validate all forecasting models
     train_test_dict = cross_val(df,target_col,period, n_splits, test_size, models,**kwargs)
@@ -124,3 +139,4 @@ def forecast_metrics(df:pd.DataFrame,target_col:str,period:int=1, n_splits:int=5
     
 
 
+"""
