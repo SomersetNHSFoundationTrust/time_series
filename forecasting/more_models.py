@@ -5,7 +5,7 @@ from .normal_naive_models import naive_pi, drift_pi, mean_pi
 from .bootstrap_naive_models import forecast_dates, naive_error, drift_error, mean_error
 from sklearn.metrics import *
 from statsmodels.tsa.seasonal import MSTL
-#from .model_selection import auto_forecast
+
 
 
 def prophet_fit(df:pd.DataFrame, target_col:str,**kwargs) -> pd.DataFrame:
@@ -24,7 +24,7 @@ def prophet_fit(df:pd.DataFrame, target_col:str,**kwargs) -> pd.DataFrame:
     data = {'ds':df.index, 'y':df[target_col].values}
     input_df = pd.DataFrame(data)
 
-    model = Prophet(**kwargs)
+    model = Prophet()
     model.fit(input_df)
     forecast = model.predict()
 
@@ -61,7 +61,9 @@ def prophet_forecast(df:pd.DataFrame, target_col:str, horizon:int, period:int = 
     else:
         first_width = 80
 
-    model = Prophet(**kwargs, interval_width=first_width / 100)
+    #testing which keyword arguments are for prophet
+
+    model = Prophet(**kwargs,interval_width=first_width / 100)
     model.fit(input_df)
     future = model.make_future_dataframe(periods=horizon)
 
@@ -79,7 +81,7 @@ def prophet_forecast(df:pd.DataFrame, target_col:str, horizon:int, period:int = 
     #storing each other prediction interval
     for width in pred_width[1:]:
 
-        model = Prophet(**kwargs, interval_width=width/100)
+        model = Prophet(**kwargs,interval_width=width/100)
         model.fit(input_df)
         future = model.make_future_dataframe(periods=horizon)
         forecast = model.predict(future)
@@ -90,7 +92,7 @@ def prophet_forecast(df:pd.DataFrame, target_col:str, horizon:int, period:int = 
     return output_forecast
 
 
-def ETS_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoETS_kwargs) -> pd.DataFrame:
+def ETS_fit(df:pd.DataFrame, target_col:str, period:int=1, **kwargs) -> pd.DataFrame:
     """
     Creates a fitted exponential smoothing forecast ising the statsforecast AutoETS class,
     which auto-selecs paramteres for the best forecast.
@@ -99,13 +101,13 @@ def ETS_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoETS_kwargs) -> 
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
         :param period: int - Seasonal period.
-        :param **AutoETS_kwargs - Keyword arguments for the statsforecast AutoETS() class.
+        :param **kwargs - Keyword arguments for the statsforecast AutoETS() class.
     Ouputs:
         pandas.DataFrame: Fitted exponential smoothing forecast for df.
     """
 
     #using AutoETS to forecast
-    forecaster = AutoETS(season_length=period,**AutoETS_kwargs)
+    forecaster = AutoETS(season_length=period,**kwargs)
     forecaster.fit(df[target_col].values)
 
     #storing the forecast and poutputing the result
@@ -120,7 +122,7 @@ def ETS_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoETS_kwargs) -> 
 
 
 
-def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_width:list=[95,80],**AutoETS_kwargs) -> pd.DataFrame:
+def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_width:list=[95,80],**kwargs) -> pd.DataFrame:
     """
     Creates a exponential smoothing forecast ising the statsforecast AutoETS class,
     which auto-selecs paramteres for the best forecast.
@@ -131,13 +133,13 @@ def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_
         :param horizon: int - Number of timesteps forecasted into the future.
         :param period: int - Seasonal period.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
-        :param **AutoETS_kwargs - Keyword arguments for the statsforecast AutoETS() class.
+        :param **kwargs - Keyword arguments for the statsforecast AutoETS() class.
     Ouputs:
         pandas.DataFrame: ETS forecast with auto-selected parameters and prediction intervals for df.
     """
 
     #using AutoETS to forecast
-    forecaster = AutoETS(season_length=period,**AutoETS_kwargs)
+    forecaster = AutoETS(season_length=period, **kwargs)
     forecaster.fit(df[target_col].values)
 
     #storing the forecast and prediction intervals
@@ -155,7 +157,7 @@ def ETS_forecast(df:pd.DataFrame,target_col:str, horizon:int, period:int=1,pred_
 
 
 
-def ARIMA_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoARIMA_kwargs) -> pd.DataFrame:
+def ARIMA_fit(df:pd.DataFrame, target_col:str, period:int=1, **kwargs) -> pd.DataFrame:
     """
     Creates a fitted ARIMA forecast ising the statsforecast AutoARIMA class,
     which auto-selecs paramteres for the best forecast.
@@ -164,13 +166,13 @@ def ARIMA_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoARIMA_kwargs)
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
         :param period: int - Seasonal period.
-        :param **AutoARIMA_kwargs - Keyword arguments for the statsforecast AutoARIMA() class.
+        :param **kwargs - Keyword arguments for the statsforecast AutoARIMA() class.
     Ouputs:
         pandas.DataFrame: Fitted ARIMA forecast for df.
     """
 
     #using AutoARIMA to forecast
-    forecaster = AutoARIMA(season_length=period,**AutoARIMA_kwargs)
+    forecaster = AutoARIMA(season_length=period, **kwargs)
     forecaster.fit(df[target_col].values)
 
     #storing the forecast and poutputing the result
@@ -185,7 +187,7 @@ def ARIMA_fit(df:pd.DataFrame, target_col:str, period:int=1, **AutoARIMA_kwargs)
 
    
 
-def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pred_width:list = [95,80], **AutoARIMA_kwargs) -> pd.DataFrame:
+def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pred_width:list = [95,80], **kwargs) -> pd.DataFrame:
     """
     Creates a ARIMA forecast ising the statsforecast AutoARIMA class,
     which auto-selecs paramteres for the best forecast.
@@ -196,13 +198,13 @@ def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pr
         :param horizon: int - Number of timesteps forecasted into the future.
         :param period: int - Seasonal period.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
-        :param **AutoARIMA_kwargs - Keyword arguments for the statsforecast AutoARIMA() class.
+        :param **kwargs - Keyword arguments for the statsforecast AutoARIMA() class.
     Ouputs:
         pandas.DataFrame: ARIMA forecast with auto-selected parameters and prediction intervals for df.
     """
 
    #using AutoARIMA to forecast
-    forecaster = AutoARIMA(season_length=period,**AutoARIMA_kwargs)
+    forecaster = AutoARIMA(season_length=period, **kwargs)
     forecaster.fit(df[target_col].values)
 
     #storing the forecast and prediction intervals
@@ -219,7 +221,7 @@ def ARIMA_forecast(df:pd.DataFrame, target_col:str,horizon:int,period:int = 1,pr
     return output_forecast
 
 
-def MSTL_forecast(df:pd.DataFrame, target_col:str,horizon:int, period=1, pred_width:list = [95,80], trend_forecaster:str = 'ETS' ,**kwargs) -> pd.DataFrame:
+def MSTL_forecast(df:pd.DataFrame, target_col:str,horizon:int, multi_period=1, pred_width:list = [95,80], trend_forecaster:str = 'ETS' ,**kwargs) -> pd.DataFrame:
     """
     Creates a MSTL forecast ising the statsmodels MSTL function.
 
@@ -232,7 +234,7 @@ def MSTL_forecast(df:pd.DataFrame, target_col:str,horizon:int, period=1, pred_wi
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column to forecast.
         :param horizon: int - Number of timesteps forecasted into the future.
-        :param period: int or list - Seasonal period/s.
+        :param multi_period: int or list - Seasonal period/s.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
         :param trend_forecaster: str - The model (a key from model_dict) used to forecast the trend.
         :param **kwargs - Keyword arguments for trend_forecaster.
@@ -240,11 +242,11 @@ def MSTL_forecast(df:pd.DataFrame, target_col:str,horizon:int, period=1, pred_wi
         pandas.DataFrame: MSTL forecast and prediction intervals for the trend of df.
     """
 
-    if period == 1:
+    if multi_period == 1:
         return 'The time series must have periodicity to decompose'
 
     #decomposing df and finding the trend
-    mstl = MSTL(df[target_col],periods=period,).fit()
+    mstl = MSTL(df[target_col],periods=multi_period, **kwargs).fit()
     trend = pd.DataFrame(mstl.trend.values, index=df.index, columns=['trend'])
 
     forecaster = model_dict[trend_forecaster]

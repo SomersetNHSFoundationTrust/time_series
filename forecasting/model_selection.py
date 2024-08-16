@@ -4,7 +4,7 @@
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import *
 import pandas as pd
-from .more_models import model_dict, benchmark_forecast
+from .more_models import model_dict
 import time
 
 #metrics to cross validate different forecasting methods
@@ -16,7 +16,7 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
               models:dict = model_dict, time_taken:bool=False,**kwargs) -> pd.DataFrame:
     
     """
-    Test forecasting method/s on observed data
+    Test forecasting method/s on observed data and records the error.
 
     Inputs:
         :param df: pandas.DataFrame - Univariate time series dataset.
@@ -136,6 +136,33 @@ def forecast_metrics(df:pd.DataFrame,target_col:str,period:int=1, n_splits:int=5
 
     return output_frame.transpose()
 
+    
+def kwargs_in_func(func,kwargs) -> dict:
+
+    
+    Tests if any of the keyword arguments are in the function parameters
+
+    Inputs:
+        :param func - The function to test.
+        :param kwargs - the keyword arguments to test.
+    Outputs:
+        dict - the subset of kwargs in the function parameters.
+    
+
+    #storing the parameters of func
+    func_args = inspect.signature(func)
+
+    output_dict = {}
+
+    #iterating through kwargs to test if any parameters are in func_args
+    for key in kwargs:
+
+        if key in func_args:
+
+            output_dict[key] = kwargs[key]
+
+    #returning the a
+    return output_dict
     
 
 

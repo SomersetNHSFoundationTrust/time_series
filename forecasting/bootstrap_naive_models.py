@@ -283,7 +283,7 @@ def bs_output(forecast_df:pd.DataFrame, pred_width:list = [95,80]) -> pd.DataFra
 # ******************************
 
 def bs_naive_pi(df: pd.DataFrame, target_col:str, horizon: int, period: int=1, repetitions:int=100,
-                pred_width:list=[95,80], simulations:bool=False) -> pd.DataFrame:
+                pred_width:list=[95,80], simulations:bool=False, **kwargs) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df and the bootstrapped naive forecast and upper and lower bounds for the prediction intervals as columns.
@@ -317,8 +317,8 @@ def bs_naive_pi(df: pd.DataFrame, target_col:str, horizon: int, period: int=1, r
         return output_forecast
 
 
-def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, repetitions: int = 100,
-                pred_width:list=[95,80],simulations:bool=False) -> pd.DataFrame:
+def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, period:int = 1, repetitions: int = 100,
+                pred_width:list=[95,80],simulations:bool=False,**kwargs) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df and the bootstrapped drift forecast and upper and lower bounds for the prediction intervals as columns.
@@ -327,6 +327,7 @@ def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, repetitions: int 
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column with historical data.
         :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
         :param repetitions: int - Number of bootstrap repetitions.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
         :param simulations: bool - Toggle whether to additionally return the simulations.
@@ -351,8 +352,8 @@ def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, repetitions: int 
         return output_forecast
 
 
-def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, repetitions: int = 100,
-               pred_width:list=[95,80],simulations:bool=False) -> pd.DataFrame:
+def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, period:int = 1, repetitions: int = 100,
+               pred_width:list=[95,80],simulations:bool=False,**kwargs) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df and the bootstrapped mean forecast and upper and lower bounds for the prediction intervals as columns.
@@ -361,6 +362,7 @@ def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, repetitions: int = 
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column with historical data.
         :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
         :param repetitions: int - Number of bootstrap repetitions.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
         :param simulations: bool - Toggle whether to additionally return the simulations.
@@ -386,7 +388,7 @@ def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, repetitions: int = 
         return output_forecast
 
 def bs_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:int, period:int=1,
-                          repetitions:int=100, pred_width:list = [95,80], simulations:bool = False) -> pd.DataFrame:
+                          repetitions:int=100, pred_width:list = [95,80], simulations:bool = False,**kwargs) -> pd.DataFrame:
     """
     Creates a bootstrapped forecast of the desired model using the forecast functions.
     

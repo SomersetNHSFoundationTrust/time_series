@@ -45,7 +45,7 @@ def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_widt
 
 
 
-def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
+def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
    
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
@@ -82,7 +82,7 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_wi
 
 
 
-def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
+def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int = 1, pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df, with the drift forecast and upper and lower bounds for the prediction intervals as columns.
@@ -116,7 +116,7 @@ def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int=1, pred_widt
 
 
 
-def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
+def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int = 1, pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df, with the mean forecast and upper and lower bounds for the prediction intervals as columns.
@@ -150,7 +150,7 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int=1, pred_widt
 
 
 def normal_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:int, period:int=1,
-                              pred_width:list = [95,80]) -> pd.DataFrame:
+                              pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
     """
     Creates a forecast of the desired model using the forecast functions.
 

@@ -14,6 +14,12 @@ from sklearn.metrics import *
 
 def resid_diagnostic(df:pd.DataFrame,target_col:str, model:str, period:int=1, **kwargs) -> go.Figure:
     """
+    A summary of the residual diagnostics.
+
+    This includes a plot of the residuals and their mean value,
+    the Autocorrelation funciton (ACF) and its 95% bounds and a histogram
+    of the residuals with a theoretical normal distribution.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param df_target_col: str - Column with historical data.
@@ -138,8 +144,9 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model:str, period:int=1, **
 
 
 def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1, **kwargs) -> go.Figure:
-    
     """
+    Plots the observed data and a fitted forcast using the specified model
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with Historical data.
@@ -183,6 +190,7 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1,
 
 def decomp(df:pd.DataFrame, target_col:str, period, **MSTLkwargs) -> tuple[pd.Series]:
     """
+    Decomposes the timeseries into the trend, seasonal and residual components using the statsmodels MSTL function
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -203,6 +211,8 @@ def decomp(df:pd.DataFrame, target_col:str, period, **MSTLkwargs) -> tuple[pd.Se
 
 def decomp_plot(df:pd.DataFrame, target_col:str, period, **MSTLkwargs) -> go.Figure:
     """
+    Plots the observed data and trend, seasonal and residual components
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -280,6 +290,8 @@ def decomp_plot(df:pd.DataFrame, target_col:str, period, **MSTLkwargs) -> go.Fig
 
 def seasonal_plot(df:pd.DataFrame,target_col:str, period:int) -> go.Figure:
     """
+    Plots each season of the timeseries in one plot
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -317,6 +329,10 @@ def seasonal_plot(df:pd.DataFrame,target_col:str, period:int) -> go.Figure:
 
 def seasonal_change(df:pd.DataFrame, target_col:str, period:int) -> go.Figure:
     """
+    Plots each stage of the timeseries in different plots.
+
+    e.g. if we have weekly seasonal data Mondays would be one plot Tuesdays would be another etc.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -363,6 +379,10 @@ def seasonal_change(df:pd.DataFrame, target_col:str, period:int) -> go.Figure:
 
 def future_forecast_data(df:pd.DataFrame, target_col:str, output_forecast:pd.DataFrame, fill=True) -> go.Figure:
     """
+    Plots the forecast and the prediction intervals using forecast and prediction interval data
+    in the same form as outputted by the forecast functions: a date-time index continued from df
+    and the forecast and upper and lower prediction interval bounds as columns.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -434,6 +454,8 @@ def future_forecast_data(df:pd.DataFrame, target_col:str, output_forecast:pd.Dat
 
 def future_forecast(df:pd.DataFrame,target_col:str, model:str, horizon:int, period:int=1, pred_width:list = [95,80], fill=True,**kwargs) -> go.Figure:
     """
+    Plots the forecast and prediction intervals of the specified model.
+    
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column with historical data.
@@ -458,6 +480,9 @@ def future_forecast(df:pd.DataFrame,target_col:str, model:str, horizon:int, peri
 
 def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, model:str, repetitions:int=100,period:int=1, pred_width:list = [95,80]) -> go.Figure:
     """
+
+    Plots all of the bootstrap simulations in addition to the bootstrapped forecast and prediction intervals.
+
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
@@ -517,7 +542,7 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, model:str,
 
 def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = model_dict,period:int=1,n_splits:int=5,test_size:int=None,**kwargs) -> go.Figure:
     """
-    Test forecasting method/s on observed data
+    Cross validates the models specified and plots the results, indicating where each fold is located.
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
@@ -564,11 +589,12 @@ def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = model_dict,peri
     fig.update_xaxes(title_text = 'Date')
     fig.update_yaxes(title_text = target_col)
 
-    fig.update_layout(template = 'plotly_white',
-                    legend=dict(orientation="h",  
-                            xanchor="center", 
-                            yanchor="top",  
-                            x=0.5,  
-                            y=-0.2))
+    fig.update_layout(height = 1000,
+                      template = 'plotly_white',
+                      legend=dict(orientation="h",  
+                                  xanchor="center", 
+                                  yanchor="top",  
+                                  x=0.5,  
+                                  y=-0.2))
 
     return fig
