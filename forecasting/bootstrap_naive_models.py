@@ -173,8 +173,8 @@ def bs_forecast_naive(df: pd.DataFrame, target_col:str, horizon: int, one_step_f
         list: A bootstrapped forecast by randomly sampling from the residuals of a naive or seasonal naive forecast.
     """
 
-    # using the last entry in df to start the sampling
-    forecast_list = [df[target_col].iloc[-x] + random.choice(one_step_fcst_errors.values) for x in range(1,period+1)]
+    # using the entries in the last season of df to start the sampling
+    forecast_list = [df[target_col].iloc[x] + random.choice(one_step_fcst_errors.values) for x in range(-period,0)]
 
     for _ in range(period, horizon):
         sample = forecast_list[-period] + random.choice(one_step_fcst_errors.values)
@@ -198,16 +198,14 @@ def bs_forecast_drift(df: pd.DataFrame,target_col:str, horizon: int, one_step_fc
 
     # using the last entry in df to start the sampling
 
-    latest_obs = df[target_col].iloc[-1]
-    first_obs = df[target_col].iloc[0]
-
-    slope = (latest_obs - first_obs) / (len(df) - 1)
-
-    initial_forecast = latest_obs + slope
+    initial_forecast = drift_method(df,target_col,1)[0]
 
     forecast_list = [initial_forecast + random.choice(one_step_fcst_errors.values)]
 
+    first_obs = df[target_col].iloc[0]
+
     for _ in range(1, horizon):
+
         latest_obs = forecast_list[-1]
 
         slope = (latest_obs - first_obs) / (len(df) + len(forecast_list) - 1)
