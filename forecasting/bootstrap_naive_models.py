@@ -110,13 +110,14 @@ def naive_error(df:pd.DataFrame,target_col:str, period:int = 1) -> pd.DataFrame:
 
 
 
-def drift_error(df:pd.DataFrame,target_col:str) -> pd.DataFrame:
+def drift_error(df:pd.DataFrame,target_col:str, period:int=1) -> pd.DataFrame:
     """
     Calculates a fitted drift forecast and difference between this and the observed data.
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
+        :param period: int - Seasonal period
     Ouputs:
         pandas.DataFrame: Dataframe with errors of drift one-step forecasts to the fitted forecast.
     """
@@ -135,13 +136,14 @@ def drift_error(df:pd.DataFrame,target_col:str) -> pd.DataFrame:
 
 
 
-def mean_error(df:pd.DataFrame,target_col:str) -> pd.DataFrame:
+def mean_error(df:pd.DataFrame,target_col:str, period:int = 1) -> pd.DataFrame:
     """
     Calculates a fitted mean forecast and difference between this and the observed data.
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
+        :param period: int - Seasonal period
     Ouputs:
         pandas.DataFrame: Dataframe with errors of mean one-step forecasts to the fitted forecast.
     """
@@ -160,6 +162,7 @@ def mean_error(df:pd.DataFrame,target_col:str) -> pd.DataFrame:
 
 
 def bs_forecast_naive(df: pd.DataFrame, target_col:str, horizon: int, one_step_fcst_errors: pd.Series, period=1) -> list:
+    
     """
     Calculates a bootstrapped (simulated) forecasts by randomly sampling from 
     the errors outputted by the naive_error function.
@@ -281,7 +284,7 @@ def bs_output(forecast_df:pd.DataFrame, pred_width:list = [95,80]) -> pd.DataFra
 # ******************************
 
 def bs_naive_pi(df: pd.DataFrame, target_col:str, horizon: int, period: int=1, repetitions:int=100,
-                pred_width:list=[95,80], simulations:bool=False, **kwargs) -> pd.DataFrame:
+                pred_width:list=[95,80], simulations:bool=False) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df and the bootstrapped naive forecast and upper and lower bounds for the prediction intervals as columns.
@@ -316,7 +319,7 @@ def bs_naive_pi(df: pd.DataFrame, target_col:str, horizon: int, period: int=1, r
 
 
 def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, period:int = 1, repetitions: int = 100,
-                pred_width:list=[95,80],simulations:bool=False,**kwargs) -> pd.DataFrame:
+                pred_width:list=[95,80],simulations:bool=False) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df and the bootstrapped drift forecast and upper and lower bounds for the prediction intervals as columns.
@@ -350,8 +353,8 @@ def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, period:int = 1, r
         return output_forecast
 
 
-def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, period:int = 1, repetitions: int = 100,
-               pred_width:list=[95,80],simulations:bool=False,**kwargs) -> pd.DataFrame:
+def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, repetitions: int = 100,
+               pred_width:list=[95,80],simulations:bool=False) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df and the bootstrapped mean forecast and upper and lower bounds for the prediction intervals as columns.
@@ -384,9 +387,11 @@ def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, period:int = 1, rep
     
     else:
         return output_forecast
+    
+
 
 def bs_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:int, period:int=1,
-                          repetitions:int=100, pred_width:list = [95,80], simulations:bool = False,**kwargs) -> pd.DataFrame:
+                          repetitions:int=100, pred_width:list = [95,80], simulations:bool = False) -> pd.DataFrame:
     """
     Creates a bootstrapped forecast of the desired model using the forecast functions.
     

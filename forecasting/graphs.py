@@ -6,13 +6,14 @@ from scipy.stats import normaltest, norm
 from statsmodels.tsa.seasonal import MSTL
 import numpy as np
 from .bootstrap_naive_models import bs_benchmark_forecast
-from .more_models import benchmark_fit, benchmark_forecast, model_dict
 from .model_selection import cross_val
+from .more_models import model_forecast, ETS_forecast, ARIMA_forecast, MSTL_forecast, Prophet_forecast
+from .normal_naive_models import Benchmark_forecast
 from sklearn.metrics import *
 
 
 
-def resid_diagnostic(df:pd.DataFrame,target_col:str, model:str, period:int=1, **kwargs) -> go.Figure:
+def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
     """
     A summary of the residual diagnostics.
 
@@ -22,9 +23,9 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model:str, period:int=1, **
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
-        :param df_target_col: str - Column with historical data.
-        :param model: str - Model used to perform the residual diagnostics, one of the keys from model_dict.
-        :param **kwargs - Keyword arguments for the sktime functions AutoETS or AutoARIMA.
+        :param target_col: str - Column with historical data.
+        :param model: str - The model used to calculate the forecast with desired parameters, one of
+                            {Benchmark_forecast(), ETS_forecast(), ARIMA_forecast(), MSTL_forecast(), Prophet_forecast()}
     Outputs:
         go.Figure - Subplots of the residuals, the ACF and a histogram of the residuals.
     """
@@ -32,7 +33,12 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model:str, period:int=1, **
     plot_frame = pd.DataFrame()
 
     #calculating the residuals to analyse.
-    fitted_forecast = benchmark_fit(df, target_col, model, period)
+
+    fitted_forecast = model_forecast(df = df,
+                                     target_col = target_col,
+                                     model = model,
+                                     horizon = None)
+
     plot_frame['error'] = df[target_col] - fitted_forecast['fitted forecast']
 
     #making subplots, the bar chart of the residuals taking up both columns of the first row
@@ -143,16 +149,15 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model:str, period:int=1, **
 
 
 
-def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1, **kwargs) -> go.Figure:
+def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model) -> go.Figure:
     """
     Plots the observed data and a fitted forcast using the specified model
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with Historical data.
-        :param model: str - Model used to calculate the fitted forecast, one of the keys from model_dict.
-        :param period: int - Seasonal period.
-        :param **kwargs - Keyword arguments for the selected model.
+        :param model: str - The model used to calculate the forecast with desired parameters, one of
+                            {Benchmark_forecast(), ETS_forecast(), ARIMA_forecast(), MSTL_forecast(), Prophet_forecast()}
     Ouputs:
         go.Figure - A plot of the observed data and the fit of the forecast selected.
     """
@@ -164,7 +169,10 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model:str,period:int=1,
                              name='Observed data'))
 
     #calculating the fitted forecast for the selected model
-    fitted_forecast = benchmark_fit(df,target_col, model, period, **kwargs)
+    fitted_forecast = model_forecast(df = df,
+                                     target_col = target_col,
+                                     model = model,
+                                     horizon = None)
 
 
     fig.add_trace(go.Scatter(x=df.index,y=fitted_forecast['fitted forecast'],
@@ -452,25 +460,25 @@ def future_forecast_data(df:pd.DataFrame, target_col:str, output_forecast:pd.Dat
 
 
 
-def future_forecast(df:pd.DataFrame,target_col:str, model:str, horizon:int, period:int=1, pred_width:list = [95,80], fill=True,**kwargs) -> go.Figure:
+def future_forecast(df:pd.DataFrame,target_col:str, model:str, horizon:int, fill=True) -> go.Figure:
     """
     Plots the forecast and prediction intervals of the specified model.
     
     Inputs:
         :param df: pandas.DataFrame - Historical time series data.
         :param target_col: str - Column with historical data.
-        :param model: str - The model to forecast, one of the keys from model_dict.
+        :param model: str - The model used to calculate the forecast with desired parameters, one of
+                            {Benchmark_forecast(), ETS_forecast(), ARIMA_forecast(), MSTL_forecast(), Prophet_forecast()}
         :param horizon: int - Number of timesteps forecasted into the future.
-        :param period: int - Seasonal period.
-        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
         :param fill: bool - Toggle whether to fill the space between each prediction interval.
-        :param **kwargs - Keyword arguments for the chosen model.
-
     Output:
         go.Figure - A plot of the oberserved data, the forecast and the prediction intervals.
     """
     #calulating the forecast for the selected model and plotting this using the previous function
-    output_forecast = benchmark_forecast(df,target_col,horizon,model,period,pred_width,**kwargs)
+    output_forecast = model_forecast(df = df,
+                                     target_col = target_col,
+                                     model = model,
+                                     horizon = horizon)
 
     fig = future_forecast_data(df,target_col, output_forecast,fill)
 
@@ -540,7 +548,7 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, model:str,
     return bs_fig
 
 
-def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = model_dict,period:int=1,n_splits:int=5,test_size:int=None,**kwargs) -> go.Figure:
+def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = None, period:int=1,n_splits:int=5,test_size:int=None,**kwargs) -> go.Figure:
     """
     Cross validates the models specified and plots the results, indicating where each fold is located.
 
@@ -549,16 +557,29 @@ def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = model_dict,peri
         :param target_col:str - Column with historical data.
         :param n_splits: int - Number of folds.
         :param test_size: int -  Forecast horizon during each fold.
-        :param models: dict - The models to compare the cross validation of
+        :param models: dict - The models to compare the cross validation of. Defaults to None,
+                              in which case it will plot all models.
         :param **kwargs - Keyword arguments for the selected models
     Outputs:
         go.Figure - A plot of each fold and it's respective forecast against the observed data
     """
 
+    model_dict = {'naive': Benchmark_forecast(model='naive', period=period, pred_width=None),
+                  'drift': Benchmark_forecast(model='drift', pred_width=None),
+                  'mean': Benchmark_forecast(model='mean', pred_width=None),
+                  'ETS': ETS_forecast(period=period, pred_width=None),
+                  'ARIMA': ARIMA_forecast(period=period, pred_width=None),
+                  'prophet': Prophet_forecast(pred_width=None),
+                  'MSTL': MSTL_forecast(multi_period=period, pred_width=None)}
+    
+    if not models:
+
+        models = model_dict
+
     fig = go.Figure()
 
     #running cross validation for the selected model
-    cross_val_frame = cross_val(df,target_col,period,n_splits,test_size,models,**kwargs)
+    cross_val_frame = cross_val(df,target_col,period,n_splits,test_size,models)
 
     #plotting the observed data and forecast from the cross validation 
     fig.add_trace(go.Scatter(x=df.index, y=df[target_col],
@@ -589,7 +610,7 @@ def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = model_dict,peri
     fig.update_xaxes(title_text = 'Date')
     fig.update_yaxes(title_text = target_col)
 
-    fig.update_layout(height = 1000,
+    fig.update_layout(height = 800,
                       template = 'plotly_white',
                       legend=dict(orientation="h",  
                                   xanchor="center", 

@@ -45,7 +45,7 @@ def pi_output(forecast_df:pd.DataFrame, horizon:int, forecast_sd:list, pred_widt
 
 
 
-def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
+def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_width:list = [95,80]) -> pd.DataFrame:
    
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
@@ -57,6 +57,7 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_wi
         :param horizon: int - Number of timesteps forecasted into the future.
         :param period: int - Seasonal period.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
+                                                         If none are needed, set to None
     Output:
         pandas.DataFrame: Naive or seasonal naive forecast and prediction intervals for df.
     """
@@ -65,24 +66,30 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_wi
     forecast_df = forecast_dates(df,horizon)
     forecast_df['forecast'] = naive_method(df,target_col, horizon,period)
 
-    #calculating thr errors from the fitted forecast to calculate the residuals
-    naive_errors = naive_error(df,target_col)['error']
+    if pred_width:
 
-    #calculating the standard deviation of the residuals, removing the first seasonal period as we cannot forecast this using this model 
-    sd_residuals = np.std(naive_errors)
+        #calculating thr errors from the fitted forecast to calculate the residuals
+        naive_errors = naive_error(df,target_col)['error']
 
-    #calculating the forecast standard deviation
-    seasons_in_forecast = [int((h-1) / period) for h in range(1,horizon+1)] 
-    forecast_sd = [sd_residuals * np.sqrt(seasons_in_forecast[h]+1) for h in range(horizon)]
+        #calculating the standard deviation of the residuals, removing the first seasonal period as we cannot forecast this using this model 
+        sd_residuals = np.std(naive_errors)
 
-    output_forecast = pi_output(forecast_df,horizon,forecast_sd, pred_width)
+        #calculating the forecast standard deviation
+        seasons_in_forecast = [int((h-1) / period) for h in range(1,horizon+1)] 
+        forecast_sd = [sd_residuals * np.sqrt(seasons_in_forecast[h]+1) for h in range(horizon)]
 
-    return output_forecast
+        output_forecast = pi_output(forecast_df,horizon,forecast_sd, pred_width)
+
+        return output_forecast
+    
+    else:
+
+        return forecast_df
 
 
 
 
-def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int = 1, pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
+def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int = 1, pred_width:list = [95,80]) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df, with the drift forecast and upper and lower bounds for the prediction intervals as columns.
@@ -93,6 +100,7 @@ def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int = 1, pred_wi
         :param horizon: int - Number of timesteps forecasted into the future.
         :param period: int - Seasonal period.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
+                                                         If none are needed, set to None
     Output:
         pandas.DataFrame: Drift forecast and prediction intervals for df.
     """
@@ -100,23 +108,29 @@ def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int = 1, pred_wi
     forecast_df = forecast_dates(df,horizon)
     forecast_df['forecast'] = drift_method(df,target_col,horizon)
 
-    #calculating the errors from the fotted forecast to calculate the residuals
-    drift_errors = drift_error(df,target_col)['error']
 
-    #calculating the standard deviation of the residuals, with one degree of freedom as we have a parameter
-    sd_residuals = np.std(drift_errors,ddof = 1)
+    if pred_width:
+        #calculating the errors from the fitted forecast to calculate the residuals
+        drift_errors = drift_error(df,target_col)['error']
 
-    #calculating the standard deviation for the forecasted points
-    forecast_sd = [sd_residuals * np.sqrt(i * (1 + i/(len(df)-1))) for i in range(1,horizon+1)]
+        #calculating the standard deviation of the residuals, with one degree of freedom as we have a parameter
+        sd_residuals = np.std(drift_errors,ddof = 1)
 
-    #outputting the result
-    output_forecast = pi_output(forecast_df,horizon,forecast_sd,pred_width)
+        #calculating the standard deviation for the forecasted points
+        forecast_sd = [sd_residuals * np.sqrt(i * (1 + i/(len(df)-1))) for i in range(1,horizon+1)]
+
+        #outputting the result
+        output_forecast = pi_output(forecast_df,horizon,forecast_sd,pred_width)
+        
+        return output_forecast
     
-    return output_forecast
+    else:
+
+        return forecast_df
 
 
 
-def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int = 1, pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
+def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int = 1, pred_width:list = [95,80]) -> pd.DataFrame:
     """
     Takes in a dataframe with date-time index and forecast horizon and outputs a data frame with dates continued
     from df, with the mean forecast and upper and lower bounds for the prediction intervals as columns.
@@ -127,6 +141,7 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int = 1, pred_wi
         :param horizon: int - Number of timesteps forecasted into the future.
         :param period: int - Seasonal period.
         :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
+                                                         If none are needed, set to None
     Output:
         pandas.DataFrame: Mean forecast and prediction intervals for df.
     """
@@ -135,44 +150,93 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int = 1, pred_wi
     forecast_df = forecast_dates(df,horizon)
     forecast_df['forecast'] = mean_method(df,target_col,horizon)
 
-    #calculating the errors from the fitted forecast to calculate the residuals
-    mean_errors = mean_error(df,target_col)['error']
+    if pred_width:
 
-    #calculating the standard deviation of the residuals, with one degree of freedom as we have a parameter
-    sd_residuls = np.std(mean_errors,ddof=1)
-    forecast_sd = [sd_residuls * np.sqrt(1 + 1/len(df))] * horizon
+        #calculating the errors from the fitted forecast to calculate the residuals
+        mean_errors = mean_error(df,target_col)['error']
 
-    #outputting the result
-    output_forecast = pi_output(forecast_df,horizon,forecast_sd, pred_width)
+        #calculating the standard deviation of the residuals, with one degree of freedom as we have a parameter
+        sd_residuls = np.std(mean_errors,ddof=1)
+        forecast_sd = [sd_residuls * np.sqrt(1 + 1/len(df))] * horizon
 
-    return output_forecast
+        #outputting the result
+        output_forecast = pi_output(forecast_df,horizon,forecast_sd, pred_width)
 
-
-
-def normal_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:int, period:int=1,
-                              pred_width:list = [95,80],**kwargs) -> pd.DataFrame:
-    """
-    Creates a forecast of the desired model using the forecast functions.
-
-    Inputs:
-        :param df: pandas.DataFrame - Historical time series data.
-        :param target_col: str - Column with historical data.
-        :param model: str - One of {'naive','drift','mean'}, the model to calculate the forecast.
-        :param horizon: int - Number of timesteps forecasted into the future.
-        :param period: int - Seasonal period.
-        :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
-    Output:
-        pandas.DataFrame: Forecast and prediction intervals for df with the specified model.
-    """
-
-    if model == 'naive':
-        forecast = naive_pi(df, target_col, horizon, period, pred_width)
+        return output_forecast
     
-    elif model == 'drift':
-        forecast = drift_pi(df,target_col, horizon, pred_width)
-    
-    elif model == 'mean':
-        forecast = mean_pi(df,target_col, horizon, pred_width)
+    else:
 
-    return forecast
+        return forecast_df
+
+
+
+naive_fit_dict = {'naive':naive_error, 'drift':drift_error, 'mean':mean_error}
+naive_forecast_dict = {'naive':naive_pi, 'drift':drift_pi, 'mean':mean_pi}
+
+
+
+
+class Benchmark_forecast:
+
+    def __init__(self, model:str, period:int=1, pred_width:list = [95,80]):
+
+        """
+        Inputs:
+            :param model: str - Desired model to use, one of {'naive', 'drift', 'mean'}.
+            :param period: int - Seasonal period.
+            :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
+                                                             If none are needed, set to None
+ 
+        """
+
+        self.period = period
+        self.model = model
+        self.pred_width = pred_width
+
+    def fit(self, df:pd.DataFrame, target_col:str):
+        
+        """
+        Fits the inputted data to the desired model.
+
+        Inputs:
+            :param df: pandas.DataFrame - Historical time series data with date-time index.
+            :param target_col: str - Column with historical data.
+        """
+
+        self.data = df
+        self.target_col = target_col
+
+    def predict(self, horizon:int = None) -> pd.DataFrame:
+        """
+        Creates a forecast and predictino intervals for the data fitted in Benchmark_forecast.fit() using the model provided.
+        Inputs:
+            :param horizon: int - Number of timesteps forecasted into the future.
+                                  Defaults to None, in which case a fitted forecast is outputted.
+        Outputs:
+            pd.DataFrame - A forecast or fitted forecast for the inputted data using the inputted naive model.
+        """
+
+        if not horizon:
+
+            fitted_forecaster = naive_fit_dict[self.model]
+            fitted_forecast = pd.DataFrame(index = self.data.index)
+            fitted_forecast['fitted forecast'] = fitted_forecaster(self.data, self.target_col, self.period)['fitted forecast']
+
+            return fitted_forecast
+        
+        else:
+
+            forecaster =  naive_forecast_dict[self.model]
+
+            output_forecast = forecaster(df = self.data,
+                                         target_col = self.target_col,
+                                         horizon = horizon,
+                                         period = self.period,
+                                         pred_width = self.pred_width)
+            
+            return output_forecast
+
+
+
+
     

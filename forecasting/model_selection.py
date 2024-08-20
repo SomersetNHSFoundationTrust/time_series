@@ -4,16 +4,18 @@
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import *
 import pandas as pd
-from .more_models import model_dict
+from .more_models import ETS_forecast, ARIMA_forecast, Prophet_forecast, MSTL_forecast
+from .normal_naive_models import Benchmark_forecast
 import time
 
 #metrics to cross validate different forecasting methods
 eval_metrics = [mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, max_error]
 
+
     
 def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
               n_splits:int=5, test_size:int=None,
-              models:dict = model_dict, time_taken:bool=False,**kwargs) -> pd.DataFrame:
+              models:dict = None) -> pd.DataFrame:
     
     """
     Test forecasting method/s on observed data and records the error.
@@ -24,13 +26,23 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
         :param period: int - Seasonal period.
         :param n_splits: int - Number of folds.
         :param test_size: int -  Forecast horizon during each fold.
-        :param model: dict - A dictionary with the models (str) as keys and their respective functions as values.
-        :param time_taken: bool - Toggle woether to print the time taken for each fold of each model
+        :param model: dict - A dictionary with the models (str) as keys and their respective classes as values.
+                             If left None, it will cross validate all models
         :param **kwargs - Keyword arguments to be used for every model.
     Outputs:
         pandas.DataFrame: A dataframe with a the models and dates as a multi-index and their respective forecast, errors and folds as columns
     """
 
+
+    if not models:
+        models = {'naive': Benchmark_forecast(model = 'naive',period=period),
+                  'drift': Benchmark_forecast(model = 'drift'),
+                  'mean': Benchmark_forecast(model = 'mean'),
+                  'ETS': ETS_forecast(period=period),
+                  'ARIMA': ARIMA_forecast(period=period),
+                  'prophet': Prophet_forecast(pred_width=None),
+                  'MSTL': MSTL_forecast(multi_period=period)}
+        
     #defining a dictionary which will be the output of the cross validation
     output_dict = {}
 
@@ -47,10 +59,10 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
         #creating a list to store each fold
         cv_summary = []
 
+        #finding the new forecast model and fitting it to the data
         forecaster = models[model]
 
-        if time_taken:
-            print(f'{model}:')
+        print(f'{model}:')
 
 
         for fold, (train, test) in enumerate(cross_val_idx):
@@ -62,12 +74,15 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
             cv_output = df[target_col].copy().iloc[test].to_frame()
     
             #forecasting from training data
-            forecast = forecaster(df = df.copy().iloc[train],
-                                  target_col = target_col,
-                                  horizon =  len(test),
-                                  period = period,
-                                  pred_width = [],
-                                  **kwargs)
+            forecaster.fit(df = df.copy().iloc[train],
+                           target_col = target_col)
+            
+            forecast = forecaster.predict(horizon = len(test))
+
+            #cannot refit the prophet model so we instantiate a new object
+            if model == 'prophet':
+                prophet_kwargs = models['prophet'].kwargs
+                forecaster = Prophet_forecast(pred_width=None, **prophet_kwargs)
 
             cv_output['forecast'] = forecast['forecast'].values
             cv_output['fold'] = fold
@@ -76,13 +91,12 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
             
             end = time.time()
 
-            if time_taken:
-                print('fold {fold_no}: {time:.4f}'.format(fold_no=fold,time=end-start))
+            print('fold {fold_no}: {time:.4f}'.format(fold_no=fold,time=end-start))
 
         output_dict[model] = pd.concat(cv_summary)
 
 
-    output_frame = pd.concat(output_dict,names = ['model',])
+    output_frame = pd.concat(output_dict, names = ['model',])
 
     return output_frame
 
