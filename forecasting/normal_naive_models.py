@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from .bootstrap_naive_models import naive_method, naive_error,  drift_method,  drift_error, mean_method, mean_error, forecast_dates
+from .bootstrap_naive_models import naive_method,  drift_method, mean_method, fitted_forecast_error, forecast_dates, bs_benchmark_forecast
 from scipy.stats import norm
 
 
@@ -68,8 +68,12 @@ def naive_pi(df:pd.DataFrame, target_col:str, horizon:int, period:int=1, pred_wi
 
     if pred_width:
 
-        #calculating thr errors from the fitted forecast to calculate the residuals
-        naive_errors = naive_error(df,target_col)['error']
+        #calculating the errors from the fitted forecast to calculate the residuals
+        naive_errors = fitted_forecast_error(df = df,
+                                             target_col = target_col,
+                                             method = naive_method,
+                                             no_missing_values = 2,
+                                             period = period)['error']
 
         #calculating the standard deviation of the residuals, removing the first seasonal period as we cannot forecast this using this model 
         sd_residuals = np.std(naive_errors)
@@ -111,7 +115,10 @@ def drift_pi(df:pd.DataFrame,target_col:str,horizon:int, period:int = 1, pred_wi
 
     if pred_width:
         #calculating the errors from the fitted forecast to calculate the residuals
-        drift_errors = drift_error(df,target_col)['error']
+        drift_errors = fitted_forecast_error(df = df,
+                                             target_col = target_col,
+                                             method = drift_method,
+                                             no_missing_values = 2)['error']
 
         #calculating the standard deviation of the residuals, with one degree of freedom as we have a parameter
         sd_residuals = np.std(drift_errors,ddof = 1)
@@ -153,7 +160,10 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int = 1, pred_wi
     if pred_width:
 
         #calculating the errors from the fitted forecast to calculate the residuals
-        mean_errors = mean_error(df,target_col)['error']
+        mean_errors = fitted_forecast_error(df = df,
+                                            target_col = target_col,
+                                            method = mean_method,
+                                            no_missing_values = 1)['error']
 
         #calculating the standard deviation of the residuals, with one degree of freedom as we have a parameter
         sd_residuls = np.std(mean_errors,ddof=1)
@@ -169,16 +179,18 @@ def mean_pi(df:pd.DataFrame,target_col:str, horizon:int, period:int = 1, pred_wi
         return forecast_df
 
 
-
-naive_fit_dict = {'naive':naive_error, 'drift':drift_error, 'mean':mean_error}
+# to calculate fitted forecasts using fitted_forecast_error from bootstrap_naive-models.py
+naive_method_dict = {'naive':naive_method, 'drift':drift_method, 'mean':mean_method}
+#to calculate forecast and prediction intervals
 naive_forecast_dict = {'naive':naive_pi, 'drift':drift_pi, 'mean':mean_pi}
 
 
-
-
 class Benchmark_forecast:
+    """
+    A class to bring together the naive models to use in the Forecast class
+    """
 
-    def __init__(self, model:str, period:int=1, pred_width:list = [95,80]):
+    def __init__(self, model:str, period:int=1, pred_width:list = [95,80], bootstrap:bool = False, repetitions:int = 100):
 
         """
         Inputs:
@@ -186,12 +198,15 @@ class Benchmark_forecast:
             :param period: int - Seasonal period.
             :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
                                                              If none are needed, set to None
- 
+            :param bootstrap: bool - Toggle whether to simulate forecasts
+            :param simulations:int - Number of bootstrap repetitions.
         """
 
         self.period = period
         self.model = model
         self.pred_width = pred_width
+        self.bootstrap = bootstrap
+        self.repetitions = repetitions
 
     def fit(self, df:pd.DataFrame, target_col:str):
         
@@ -218,23 +233,45 @@ class Benchmark_forecast:
 
         if not horizon:
 
-            fitted_forecaster = naive_fit_dict[self.model]
+            method = naive_method_dict[self.model]
+
+            if self.model == 'drift':
+                no_missing_values = 2
+            else:
+                no_missing_values = self.period
+
             fitted_forecast = pd.DataFrame(index = self.data.index)
-            fitted_forecast['fitted forecast'] = fitted_forecaster(self.data, self.target_col, self.period)['fitted forecast']
+            fitted_forecast['fitted forecast'] = fitted_forecast_error(df = self.data,
+                                                                       target_col = self.target_col,
+                                                                       method = method,
+                                                                       no_missing_values = no_missing_values,
+                                                                       period = self.period)['fitted forecast']
 
             return fitted_forecast
         
         else:
 
-            forecaster =  naive_forecast_dict[self.model]
+            if self.bootstrap:
 
-            output_forecast = forecaster(df = self.data,
-                                         target_col = self.target_col,
-                                         horizon = horizon,
-                                         period = self.period,
-                                         pred_width = self.pred_width)
-            
-            return output_forecast
+                output_forecast = bs_benchmark_forecast(df = self.data,
+                                                        target_col = self.target_col,
+                                                        model = self.model,
+                                                        horizon = horizon,
+                                                        period = self.period,
+                                                        repetitions = self.repetitions,
+                                                        pred_width = self.pred_width)
+
+            else:
+
+                forecaster =  naive_forecast_dict[self.model]
+
+                output_forecast = forecaster(df = self.data,
+                                             target_col = self.target_col,
+                                             horizon = horizon,
+                                             period = self.period,
+                                             pred_width = self.pred_width)
+                
+                return output_forecast
 
 
 

@@ -28,7 +28,7 @@ def naive_method(df:pd.DataFrame, target_col:str, horizon:int, period:int=1) -> 
 
 
 
-def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
+def drift_method(df:pd.DataFrame, target_col:str, horizon:int, period:int = 1) -> list:
     """
     Creates a drift forecast in the form of a list
 
@@ -36,6 +36,7 @@ def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - column with historical data.
         :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
     Outputs:
         list: Forecasted time series with drift method.
     """
@@ -49,7 +50,7 @@ def drift_method(df:pd.DataFrame, target_col:str, horizon:int) -> list:
     return forecast_list
 
 
-def mean_method(df:pd.DataFrame,target_col:str,horizon:int) -> list:
+def mean_method(df:pd.DataFrame,target_col:str,horizon:int, period:int = 1) -> list:
     """
     Creates a mean forecast in the form of a list
 
@@ -57,6 +58,7 @@ def mean_method(df:pd.DataFrame,target_col:str,horizon:int) -> list:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - column with historical data.
         :param horizon: int - Number of timesteps forecasted into the future.
+        :param period: int - Seasonal period.
     Outputs:
         list: Forecasted time series with mean method.
     """
@@ -88,46 +90,36 @@ def forecast_dates(df:pd.DataFrame, horizon:int) -> pd.DataFrame :
 
 
 
-def naive_error(df:pd.DataFrame,target_col:str, period:int = 1) -> pd.DataFrame:
-
+def fitted_forecast_error(df:pd.DataFrame, target_col:str,
+                          method, no_missing_values:int, period:int=1) -> pd.DataFrame:
     """
-    Calculates a fitted naive forecast and difference between this and the observed data.
+    Calculates the fitted forecast for the chosen method and the error from the observed data
+    the error from the resulting data frame will be used to randomly sampled from when bootstrapping
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
-        :param period: int - Seasonal period.
-    Ouputs:
-        pandas.DataFrame: Dataframe with errors of a one step naive or seasonal naive forecast to the fitted forecast.
-    """
-
-    error = pd.DataFrame(index = df.index)
-
-    error['fitted forecast'] = df[target_col].shift(period) 
-    error['error'] = df[target_col] - error['fitted forecast']
-
-    return error.dropna()
-
-
-
-def drift_error(df:pd.DataFrame,target_col:str, period:int=1) -> pd.DataFrame:
-    """
-    Calculates a fitted drift forecast and difference between this and the observed data.
-
-    Inputs:
-        :param df: pandas.DataFrame - Historical time series data with date-time index.
-        :param target_col: str - Column with historical data.
+        :param method - The method to calculate the forecast. Must output in list form, and can be one of
+                        {naive_method, drift_method, mean_method}.
+        :param no_missing_values: int - The number of values used to calculate the first one step forecast.
         :param period: int - Seasonal period
-    Ouputs:
-        pandas.DataFrame: Dataframe with errors of drift one-step forecasts to the fitted forecast.
+    Outputs:
+        pandas.DataFrame - Dataframe of the fitted forecast and errors to the observed data as columns
     """
 
-    fitted_values = [np.nan,np.nan]
+    #starting the values list with some missing values
+    fitted_values = [np.nan] * no_missing_values
 
-    for i in range(2,len(df)):
-        forecast = drift_method(df.iloc[:i],target_col,horizon=1)
+    #calculating each one-step forecast
+    for i in range(no_missing_values, len(df)):
+        forecast = method(df = df.iloc[:i],
+                          target_col = target_col,
+                          period=period,
+                          horizon = 1)
+        
         fitted_values.append(forecast[0])
-    
+
+    #collecting the fitted forecast and errors in a dataframe
     error = pd.DataFrame(index = df.index)
     error['fitted forecast'] = fitted_values
     error['error'] = df[target_col] - error['fitted forecast']
@@ -136,117 +128,60 @@ def drift_error(df:pd.DataFrame,target_col:str, period:int=1) -> pd.DataFrame:
 
 
 
-def mean_error(df:pd.DataFrame,target_col:str, period:int = 1) -> pd.DataFrame:
-    """
-    Calculates a fitted mean forecast and difference between this and the observed data.
-
-    Inputs:
-        :param df: pandas.DataFrame - Historical time series data with date-time index.
-        :param target_col: str - Column with historical data.
-        :param period: int - Seasonal period
-    Ouputs:
-        pandas.DataFrame: Dataframe with errors of mean one-step forecasts to the fitted forecast.
-    """
-
-    fitted_values = [np.nan]
-
-    for i in range(1,len(df)):
-        forecast = mean_method(df.iloc[:i],target_col,horizon=1)
-        fitted_values.append(forecast[0])
-
-    error = pd.DataFrame(index = df.index)
-    error['fitted forecast'] = fitted_values
-    error['error'] = df[target_col] - error['fitted forecast']
-
-    return error.dropna()
-
-
-def bs_forecast_naive(df: pd.DataFrame, target_col:str, horizon: int, one_step_fcst_errors: pd.Series, period=1) -> list:
+def bs_forecast_values(df:pd.DataFrame, target_col:str, horizon:int,
+                       method, one_step_fcst_errors:pd.Series, no_missing_values:int, period:int=1) -> list:
     
     """
-    Calculates a bootstrapped (simulated) forecasts by randomly sampling from 
-    the errors outputted by the naive_error function.
+    Calculates a forecast of the chosen method by randomly sampling from the one step forecast errors calculated in fitted_forecast_error.
+    Outputs the forecast as a list.
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
         :param target_col: str - Column with historical data.
-        :param horizon: int - Number of timesteps forecasted into the future.
-        :param one_step_fcsts: pandas.Series - The errors of one-step forecasts to data to randomly sample from.
-    Ouputs:
-        list: A bootstrapped forecast by randomly sampling from the residuals of a naive or seasonal naive forecast.
+        :param horizon: int - Number of time steps forecasted into the future
+        :param method - The method to calculate the forecast. Must output in list form, and can be one of
+                        {naive_method, drift_method, mean_method}.
+        :param one_step_forecast_errors: pandas.Series - the 'error' column of the output of fitted_forecast_error using the same method
+        :param no_missing_values: int - The number of values used to calculate the first one step forecast.
+        :param period: int - Seasonal period
+    Outputs:
+        pandas.DataFrame - The bootstrapped forecast using the chosen method as a list
     """
+    
+    #creating an initial forecast to add random samples to
+    initial_forecast = method(df = df,
+                              target_col=target_col,
+                              horizon=no_missing_values,
+                              period=period)
 
-    # using the entries in the last season of df to start the sampling
-    forecast_list = [df[target_col].iloc[x] + random.choice(one_step_fcst_errors.values) for x in range(-period,0)]
+    forecast_list = [initial_forecast[i] +
+                     random.choice(one_step_fcst_errors.values)
+                     for i in range(no_missing_values)]
+    
+    #appending forecast_list to the observed data to forecast from
+    new_df = pd.DataFrame(df[target_col].to_list() + forecast_list, columns = [target_col])
 
-    for _ in range(period, horizon):
-        sample = forecast_list[-period] + random.choice(one_step_fcst_errors.values)
-        forecast_list.append(sample)
 
-    return forecast_list
+    #calculating forecasts based on the bootstrapped forecasts before
+    if no_missing_values < horizon:
 
-def bs_forecast_drift(df: pd.DataFrame,target_col:str, horizon: int, one_step_fcst_errors: pd.Series) -> list:
-    """
-    Calculates bootstrapped (simulated) forecasts by randomly sampling from 
-    the errors outputted by the drift_error function.
+        for index in range(no_missing_values, horizon):
 
-    Inputs:
-        :param df: pandas.DataFrame - Historical time series data with date-time index.
-        :param target_col: str - Column with historical data.
-        :param horizon: int - Number of timesteps forecasted into the future.
-        :param one_step_fcsts: pandas.Series - The errors of one-step forecasts to data to randomly sample from.
-    Ouputs:
-        list: A bootstrapped forecast by randomly sampling from the residuals of a drift forecast.
-    """
+            forecast = method(df = new_df,
+                            target_col = target_col,
+                            horizon = 1,
+                            period=period)[0]
+            
+            sample = forecast + random.choice(one_step_fcst_errors.values)
+            new_df.loc[len(df)+index] = sample
+        
+    
+    return new_df[target_col].iloc[-horizon:].to_list()
+    
 
-    # using the last entry in df to start the sampling
+    
 
-    initial_forecast = drift_method(df,target_col,1)[0]
 
-    forecast_list = [initial_forecast + random.choice(one_step_fcst_errors.values)]
-
-    first_obs = df[target_col].iloc[0]
-
-    for _ in range(1, horizon):
-
-        latest_obs = forecast_list[-1]
-
-        slope = (latest_obs - first_obs) / (len(df) + len(forecast_list) - 1)
-
-        forecast = latest_obs + slope
-
-        sample = forecast + random.choice(one_step_fcst_errors.values)
-
-        forecast_list.append(sample)
-
-    return forecast_list
-
-def bs_forecast_mean(df: pd.DataFrame,target_col:str, horizon: int, one_step_fcst_errors: pd.Series) -> list:
-    """
-    Calculates bootstrapped (simulated) forecasts by randomly sampling from 
-    the errors outputted by the mean_error function.
-
-    Inputs:
-        :param df: pandas.DataFrame - Historical time series data with date-time index.
-        :param target_col: str - Column with historical data.
-        :param horizon: int - Number of timesteps forecasted into the future.
-        :param one_step_fcsts: pandas.Series - The errors of one-step forecasts to data to randomly sample from .
-    Ouputs:
-        list: A bootstrapped forecast by randomly sampling from the residuals of a mean forecast.
-    """
-
-    # using the mean of the observed data to start the forecast
-    c = np.mean(df[target_col])
-    forecast_list = [c + random.choice(one_step_fcst_errors.values)]
-
-    for _ in range(1, horizon):
-
-        c = np.mean(df[target_col].tolist() + forecast_list)
-
-        sample = c + random.choice(one_step_fcst_errors.values)
-        forecast_list.append(sample)
-
-    return forecast_list
 
 def bs_output(forecast_df:pd.DataFrame, pred_width:list = [95,80]) -> pd.DataFrame :
     """
@@ -265,6 +200,7 @@ def bs_output(forecast_df:pd.DataFrame, pred_width:list = [95,80]) -> pd.DataFra
     #storing the mean and quantiles for each forecast point in columns
     output_forecast = pd.DataFrame(forecast_df.mean(axis=1), columns=['forecast'])
 
+    #sorting the widths in reverse order
     pred_width = np.sort(pred_width)
     pred_width = reversed(pred_width)
 
@@ -301,12 +237,25 @@ def bs_naive_pi(df: pd.DataFrame, target_col:str, horizon: int, period: int=1, r
         pandas.DataFrame: Bootstrapped naive or seasonal naive forecast and prediction intervals for df.
     """
 
+    #creating a dataframe to store the simulated forecasts and finding the errors to randomly sample from
     forecast_df = forecast_dates(df,horizon)
-    naive_errors = naive_error(df,target_col)['error']
-
+    naive_errors = fitted_forecast_error(df = df,
+                                         target_col = target_col,
+                                         method = naive_method,
+                                         no_missing_values = period,
+                                         period = period)['error']
+    #running the simulations
     for run in range(repetitions):
-        forecast_df[f'run_{run}'] = bs_forecast_naive(df,target_col, horizon, naive_errors, period)
+        sim_forecast= bs_forecast_values(df = df,
+                                         target_col = target_col,
+                                         horizon = horizon,
+                                         one_step_fcst_errors = naive_errors,
+                                         no_missing_values = period,
+                                         period = period)
+        
+        forecast_df = pd.concat([forecast_df, pd.Series(sim_forecast, index = forecast_df.index, name=f'run_{run}')],axis=1)
 
+    #finding the mean and quartiles of the simulations for the forecast and prediction intervals 
     output_forecast = bs_output(forecast_df, pred_width)
 
     if simulations:
@@ -336,13 +285,23 @@ def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, period:int = 1, r
         pandas.DataFrame: Bootstrapped drift forecast and prediction intervals for df.
     """
 
-    forecast_df = forecast_dates(df, horizon)
-
-    drift_errors = drift_error(df,target_col)['error']
-
+    #creating a dataframe to store the simulated forecasts and finding the errors to randomly sample from
+    forecast_df = forecast_dates(df,horizon)
+    drift_errors = fitted_forecast_error(df = df,
+                                         target_col = target_col,
+                                         method = drift_method,
+                                         no_missing_values = 2)['error']
+    #running the simulations
     for run in range(repetitions):
-        forecast_df[f'run_{run}'] = bs_forecast_drift(df,target_col, horizon, drift_errors)
+        sim_forecast= bs_forecast_values(df = df,
+                                         target_col = target_col,
+                                         horizon = horizon,
+                                         one_step_fcst_errors = drift_errors,
+                                         no_missing_values = 2)
+        
+        forecast_df = pd.concat([forecast_df, pd.Series(sim_forecast, index = forecast_df.index, name=f'run_{run}')],axis=1)
 
+    #finding the mean and quartiles of the simulations for the forecast and prediction intervals
     output_forecast = bs_output(forecast_df, pred_width)
 
     if simulations:
@@ -371,14 +330,24 @@ def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, repetitions: int = 
         pandas.DataFrame: Bootstrapped mean forecast and prediction intervals for df.
     """
 
+    #creating a dataframe to store the simulated forecasts and finding the errors to randomly sample from
+    forecast_df = forecast_dates(df,horizon)
+    mean_errors = fitted_forecast_error(df = df,
+                                         target_col = target_col,
+                                         method = mean_method,
+                                         no_missing_values = 1)['error']
 
-    forecast_df = forecast_dates(df, horizon)
-
-    mean_errors = mean_error(df,target_col)['error']
-
+    #running the simulations
     for run in range(repetitions):
-        forecast_df[f'run_{run}'] = bs_forecast_mean(df,target_col, horizon, mean_errors)
+        sim_forecast= bs_forecast_values(df = df,
+                                         target_col = target_col,
+                                         horizon = horizon,
+                                         one_step_fcst_errors = mean_errors,
+                                         no_missing_values = 1)
+        
+        forecast_df = pd.concat([forecast_df, pd.Series(sim_forecast, index = forecast_df.index, name=f'run_{run}')],axis=1)
 
+    #finding the mean and quartiles of these simulations for the forecast and predictoin intervals.
     output_forecast = bs_output(forecast_df, pred_width)
 
     if simulations:
@@ -388,6 +357,9 @@ def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, repetitions: int = 
     else:
         return output_forecast
     
+    
+#to match method names to forecasting functions
+bs_forecast_dict = {'naive':bs_naive_pi, 'drift':bs_drift_pi, 'mean':bs_mean_pi}
 
 
 def bs_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:int, period:int=1,
@@ -407,19 +379,16 @@ def bs_benchmark_forecast(df:pd.DataFrame, target_col:str, model:str, horizon:in
     Output:
         pandas.DataFrame: Bootstrapped forecast and prediction intervals for df with the specified model.
     """
+    #using the method dictionary to get the forecasting function
+    method = bs_forecast_dict[model]
 
-    if model == 'naive':
-        forecast = bs_naive_pi(df, target_col, horizon, period, repetitions, pred_width,simulations)
+    output_forecast = method(df = df,
+                             target_col = target_col,
+                             horizon = horizon,
+                             period = period,
+                             repetitions = repetitions,
+                             pred_width = pred_width,
+                             simulations = simulations)
     
-    elif model == 'drift':
-        forecast = bs_drift_pi(df,target_col, horizon, repetitions, pred_width,simulations)
+    return output_forecast
     
-    elif model == 'mean':
-        forecast = bs_mean_pi(df,target_col, horizon, repetitions, pred_width,simulations)
-
-    return forecast
-    
-
-
-
-
