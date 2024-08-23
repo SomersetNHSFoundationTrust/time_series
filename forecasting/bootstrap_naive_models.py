@@ -249,6 +249,7 @@ def bs_naive_pi(df: pd.DataFrame, target_col:str, horizon: int, period: int=1, r
         sim_forecast= bs_forecast_values(df = df,
                                          target_col = target_col,
                                          horizon = horizon,
+                                         method = naive_method,
                                          one_step_fcst_errors = naive_errors,
                                          no_missing_values = period,
                                          period = period)
@@ -296,6 +297,7 @@ def bs_drift_pi(df: pd.DataFrame,target_col:str, horizon: int, period:int = 1, r
         sim_forecast= bs_forecast_values(df = df,
                                          target_col = target_col,
                                          horizon = horizon,
+                                         method = drift_method,
                                          one_step_fcst_errors = drift_errors,
                                          no_missing_values = 2)
         
@@ -342,6 +344,7 @@ def bs_mean_pi(df: pd.DataFrame,target_col:str, horizon=int, repetitions: int = 
         sim_forecast= bs_forecast_values(df = df,
                                          target_col = target_col,
                                          horizon = horizon,
+                                         method = mean_method,
                                          one_step_fcst_errors = mean_errors,
                                          no_missing_values = 1)
         

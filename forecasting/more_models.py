@@ -1,13 +1,17 @@
 import pandas as pd
 from prophet import Prophet
 from statsforecast.models import AutoETS, AutoARIMA, MSTL
-from .normal_naive_models import Benchmark_forecast
 from .bootstrap_naive_models import forecast_dates
 
 class Prophet_forecast:
 
+    """
+    Creates a forecast using facebook Prophet
+    """
+
     def __init__(self, pred_width:list=[95,80], **kwargs):
 
+    
         """
         Inputs:
             :param pred_width: list, 0 <= pred_width < 100 - List of widths of prediction intervals.
@@ -104,6 +108,10 @@ class Prophet_forecast:
 
 class ETS_forecast:
 
+    """
+    Creates a forecast and prediction intervals using AutoETS from statsforecast.models
+    """
+
 
     def __init__(self, period:int=1, pred_width:list = [95,80], **kwargs):
         """
@@ -174,6 +182,11 @@ class ETS_forecast:
 
 
 class ARIMA_forecast:
+    
+    """
+    Creates a forecast and prediction intervals using AutoARIMA from statsforecast.models
+
+    """
     
 
     def __init__(self, period:int=1, pred_width:list = [95,80], **kwargs):
@@ -247,6 +260,11 @@ class ARIMA_forecast:
             
 
 class MSTL_forecast:
+    
+    """
+    Creates a forecast and prediction intervals using MSTL from statsforecast.models
+
+    """
     
 
     def __init__(self, multi_period, trend_forecaster = AutoETS(model = 'ZZN'), pred_width:list = [95,80], **kwargs):

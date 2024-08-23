@@ -42,15 +42,15 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
     plot_frame['error'] = df[target_col] - fitted_forecast['fitted forecast']
 
     #making subplots, the bar chart of the residuals taking up both columns of the first row
-    fig = make_subplots(
-        rows=2, cols=2,
-        specs=[[{"colspan": 2},None],[{}, {}]],
-        subplot_titles=("Residual plot","Autocorrelation function", "Residual histogram"),
-        vertical_spacing=0.18)
+
+    fig = make_subplots(rows=2, cols=2,
+                        specs=[[{"colspan": 2},None],[{}, {}]],
+                        subplot_titles=("Residual plot","Autocorrelation function", "Residual histogram"),
+                        vertical_spacing=0.18)
     
 
 
-    #plotting the bar chart of the residuals
+    #plotting a bar chart of the residuals
     fig.add_trace(go.Bar(x=plot_frame.index, y=plot_frame['error'],
                         marker_color='#00789c',
                         showlegend=False),
@@ -61,8 +61,9 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
                             y=[np.mean(plot_frame['error'])] * len(df),
                             name = 'Mean value',
                             line=dict(color='black')),
-                            row = 1, col=1)
+                  row = 1, col=1)
 
+    #positioning the legend below the plot
     fig.update_traces(row=1, col=1, legend='legend2')
 
     fig.update_layout({'legend2': dict(x=0.5,y=0.5,xanchor='center', yanchor="bottom")})
@@ -92,7 +93,8 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
                             line=dict(color = '#d1495b', dash = 'dash'),
                             showlegend=False),
                     row=2, col=1)
-
+    
+    #positioning the legend below the plot
     fig.update_traces(row=2,col=1,legend = 'legend3')
 
     fig.update_layout({'legend3' : dict(x=0.23, y=-0.1, xanchor = 'center', yanchor='bottom')})
@@ -109,7 +111,7 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
                     row=2, col=2)
 
 
-    #plotting a normal distribution with standard deviation the same as the residuals on the histogram
+    #plotting a normal distribution with standard deviation of the residuals on the histogram
     sd = np.std(plot_frame['error'].dropna())
     x = np.linspace(start=plot_frame['error'].min()-1, stop=plot_frame['error'].max()+1, num=100)
 
@@ -127,7 +129,7 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
 
 
 
-
+    #naming the axes for each plot
     fig.update_xaxes(title_text='Date', row=1, col=1)
     fig.update_yaxes(title_text='Error from the forecast', row=1, col=1)
 
@@ -142,7 +144,7 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
                     template='plotly_white')
 
     #calculating the 2-sided chi-squared p-value for a normal hypothesis test on the residuals
-    p_value = normaltest(plot_frame['error'].values).pvalue
+    p_value = normaltest(plot_frame['error'].dropna().values).pvalue
     print('The 2-sided chi-squared probability for a normal hypotheis test on the residuals: {:.4f}'.format(p_value))
 
     return fig
@@ -151,7 +153,7 @@ def resid_diagnostic(df:pd.DataFrame,target_col:str, model) -> go.Figure:
 
 def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model) -> go.Figure:
     """
-    Plots the observed data and a fitted forcast using the specified model
+    Plots the observed data and a fitted forecast using the specified model
 
     Inputs:
         :param df: pandas.DataFrame - Historical time series data with date-time index.
@@ -176,8 +178,8 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model) -> go.Figure:
 
 
     fig.add_trace(go.Scatter(x=df.index,y=fitted_forecast['fitted forecast'],
-                        line=dict(color='#d1495b'),
-                        name='Fitted forecast'))
+                             line=dict(color='#d1495b'),
+                             name='Fitted forecast'))
     
     fig.update_layout(height=600,
                     title_text=f'Observed data and {model} fitted forecast',
@@ -518,7 +520,7 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, model:str,
                                     opacity=0.2))
         
     #finding the forecast and the prediction intervals
-    fig = future_forecast_data(df, target_col, output_forecast,fill=False)
+    fig = future_forecast_data(df, target_col, output_forecast, fill=False)
 
 
     #adding this figure to the simulations
@@ -548,7 +550,7 @@ def bootstrap_sim_graph(df:pd.DataFrame, target_col:str, horizon:int, model:str,
     return bs_fig
 
 
-def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = None, period:int=1,n_splits:int=5,test_size:int=None,**kwargs) -> go.Figure:
+def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = None, period:int=1,n_splits:int=5,test_size:int=None) -> go.Figure:
     """
     Cross validates the models specified and plots the results, indicating where each fold is located.
 
@@ -559,7 +561,6 @@ def cross_val_graph(df:pd.DataFrame,target_col:str,models:dict = None, period:in
         :param test_size: int -  Forecast horizon during each fold.
         :param models: dict - The models to compare the cross validation of. Defaults to None,
                               in which case it will plot all models.
-        :param **kwargs - Keyword arguments for the selected models
     Outputs:
         go.Figure - A plot of each fold and it's respective forecast against the observed data
     """

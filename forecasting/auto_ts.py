@@ -12,7 +12,8 @@ from sklearn.metrics import *
 class Forecast:
 
     """
-    Forecasting class
+    A class to bring together forecasting methods in normal_naive_models.py and more_models.py.
+    The main function of this class is to perform and visualise cross validation of these models
 
     ----------
     Attributes

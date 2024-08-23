@@ -190,7 +190,8 @@ class Benchmark_forecast:
     A class to bring together the naive models to use in the Forecast class
     """
 
-    def __init__(self, model:str, period:int=1, pred_width:list = [95,80], bootstrap:bool = False, repetitions:int = 100):
+    def __init__(self, model:str, period:int=1, pred_width:list = [95,80],
+                 bootstrap:bool = False, repetitions:int = 100):
 
         """
         Inputs:
@@ -260,6 +261,7 @@ class Benchmark_forecast:
                                                         period = self.period,
                                                         repetitions = self.repetitions,
                                                         pred_width = self.pred_width)
+                
 
             else:
 
@@ -271,7 +273,7 @@ class Benchmark_forecast:
                                              period = self.period,
                                              pred_width = self.pred_width)
                 
-                return output_forecast
+            return output_forecast
 
 
 
