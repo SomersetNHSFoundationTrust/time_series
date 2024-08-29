@@ -2,8 +2,9 @@ import unittest
 import pandas as pd
 import numpy as np
 from statsforecast.models import Naive, SeasonalNaive, RandomWalkWithDrift
-from forecasting.bootstrap_naive_models import *
-from forecasting.normal_naive_models import *
+from forecasting.naive_method import *
+from forecasting.drift_method import *
+from forecasting.mean_method import *
 
 # *********************
 # Create test dataframe
@@ -50,6 +51,18 @@ class ModelsTestCase(unittest.TestCase):
 
         self.assertEqual(mean_forecast, mean_value)
 
+
+    def test_window_mean(self):
+        window_mean_forecast = mean_method(time_series_df,
+                                           target_col='Value',
+                                           horizon=1,
+                                           window=7)
+        
+        mean_value = np.mean(time_series_df['Value'].iloc[-7:].values)
+
+        self.assertEqual(window_mean_forecast, mean_value)
+
+
     def test_drift(self):
         drift_forecast = drift_method(time_series_df,
                                       target_col='Value',
@@ -63,6 +76,7 @@ class ModelsTestCase(unittest.TestCase):
 
         self.assertEqual(drift_forecast[0],test_value)
 
+
     def test_bs_naive(self):
 
         bs_naive_forecast = bs_naive_pi(time_series_df,
@@ -74,6 +88,7 @@ class ModelsTestCase(unittest.TestCase):
         delta = 5 * last_value / 100
 
         self.assertAlmostEqual(bs_naive_forecast,last_value,delta = delta)
+        
 
     def test_bs_s_naive(self):
 

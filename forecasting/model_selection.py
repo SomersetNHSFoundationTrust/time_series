@@ -1,12 +1,18 @@
 # Functions for train/test splits & cross validation
 # We can output summary tables for key forecasting metrics (i.e., MAPE/MAE/...)
 
+
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import *
 import pandas as pd
-from .more_models import ETS_forecast, ARIMA_forecast, Prophet_forecast, MSTL_forecast
-from .normal_naive_models import Benchmark_forecast
 import time
+
+from .more_models import ETS_forecast, ARIMA_forecast, Prophet_forecast, MSTL_forecast
+from .naive_method import Naive_forecast
+from .drift_method import Drift_forecast
+from .mean_method import Mean_forecast
+
+
 
 #metrics to cross validate different forecasting methods
 eval_metrics = [mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, max_error]
@@ -18,36 +24,47 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
               models:dict = None) -> pd.DataFrame:
     
     """
+
     Test forecasting method/s on observed data and records the error.
 
-    Inputs:
-        :param df: pandas.DataFrame - Univariate time series dataset.
-        :param target_col:str - Column with historical data.
-        :param period: int - Seasonal period.
-        :param n_splits: int - Number of folds.
-        :param test_size: int -  Forecast horizon during each fold.
-        :param model: dict - A dictionary with the models (str) as keys and their respective classes as values.
+    Parameters:
+         df: pandas.DataFrame - Univariate time series dataset.
+         target_col:str - Column with historical data.
+         period: int - Seasonal period.
+         n_splits: int - Number of folds.
+         test_size: int -  Forecast horizon during each fold.
+         model: dict - A dictionary with the models (str) as keys and their respective classes as values.
                              If left None, it will cross validate all models
-        :param **kwargs - Keyword arguments to be used for every model.
-    Outputs:
+            
+    Returns:
         pandas.DataFrame: A dataframe with a the models and dates as a multi-index and their respective forecast, errors and folds as columns
     """
 
 
+
+
     if not models:
-        models = {'naive': Benchmark_forecast(model = 'naive',period=period),
-                  'drift': Benchmark_forecast(model = 'drift'),
-                  'mean': Benchmark_forecast(model = 'mean'),
+
+
+        models = {'naive': Naive_forecast(period = period, pred_width=None),
+                  'drift': Drift_forecast(pred_width = None),
+                  'mean': Mean_forecast(window = period, pred_width = None),
                   'ETS': ETS_forecast(period=period),
                   'ARIMA': ARIMA_forecast(period=period),
                   'prophet': Prophet_forecast(pred_width=None),
                   'MSTL': MSTL_forecast(multi_period=period)}
         
+
+
     #defining a dictionary which will be the output of the cross validation
     output_dict = {}
 
+
+
     #iterating through the model dictionary
     for model in models:
+
+
 
         #splitting the time series to test
         tscv = TimeSeriesSplit(n_splits=n_splits, test_size=test_size)
@@ -59,125 +76,68 @@ def cross_val(df:pd.DataFrame, target_col:str, period:int=1,
         #creating a list to store each fold
         cv_summary = []
 
+
+
         #finding the new forecast model and fitting it to the data
         forecaster = models[model]
 
+
+        #for tracking the time for each fold
         print(f'{model}:')
 
 
         for fold, (train, test) in enumerate(cross_val_idx):
 
+
+
             #measuring time elapsed for each fold
             start = time.time()
 
+
+
             #copying the test data in df to cv_output to compare to the forecast
             cv_output = df[target_col].copy().iloc[test].to_frame()
+
+
     
             #forecasting from training data
             forecaster.fit(df = df.copy().iloc[train],
                            target_col = target_col)
             
+
+            
             forecast = forecaster.predict(horizon = len(test))
+
+
 
             #cannot refit the prophet model so we instantiate a new object
             if model == 'prophet':
                 prophet_kwargs = models['prophet'].kwargs
                 forecaster = Prophet_forecast(pred_width=None, **prophet_kwargs)
 
+
+
             cv_output['forecast'] = forecast['forecast'].values
+            
             cv_output['fold'] = fold
+            
             cv_output['error'] = cv_output[target_col] - cv_output['forecast']
+            
             cv_summary.append(cv_output)
             
+
+
             end = time.time()
 
-            print('fold {fold_no}: {time:.4f}'.format(fold_no=fold,time=end-start))
+            print('fold {fold_no}: {time:.4f} seconds'.format(fold_no=fold, time=end-start))
+
+
 
         output_dict[model] = pd.concat(cv_summary)
 
 
     output_frame = pd.concat(output_dict, names = ['model',])
 
+
+
     return output_frame
-
-
-
-"""
-def forecast_metrics(df:pd.DataFrame,target_col:str,period:int=1, n_splits:int=5, test_size:int=None, models:dict = model_dict,**kwargs) -> pd.DataFrame:
-    
-    
-    Cross validation (k-fold) for time series data.
-
-    Inputs:
-        :param df: pandas.DataFrame - Univariate time series dataset.
-        :param target_col: str - Column with historical data.
-        :param periodL int - seasonal period.
-        :param n_splits: int - Number of folds.
-        :param test_size: int -  Forecast horizon during each fold.
-        :param models: dict - a dictionary with the models (str) as keys and their respective functions as values.
-        :param **kwargs - Keyword arguments to be used for every model.
-    Outputs:
-        pandas.DataFrame - A value of each evaluation metric for each model using cross_val.
-    
-
-    #cross validate all forecasting models
-    train_test_dict = cross_val(df,target_col,period, n_splits, test_size, models,**kwargs)
-
-    #creating a dataframe to store the metric scores for each method
-    output_frame = pd.DataFrame(index = ['mean_absolute_error', 'mean_absolute_percentage_error', 'mean_squared_error', 'max_error'])
-
-    #evaluating each of the methods against the observed data
-    for model in models:
-
-        #storing the forecast for this model
-        cv = train_test_dict[model]['forecast']
-
-        #storing the observed data to compare to the forecast
-        obs_data = df[target_col][cv.index]
-
-        eval_list = []
-
-        for metric in eval_metrics:
-
-            #creating a list of the metric score for each method
-            eval = metric(y_true = obs_data, y_pred = cv)
-
-            eval_list.append(eval)
-
-        #adding this as a column to output_frame
-        output_frame[model] = eval_list
-
-
-    return output_frame.transpose()
-
-    
-def kwargs_in_func(func,kwargs) -> dict:
-
-    
-    Tests if any of the keyword arguments are in the function parameters
-
-    Inputs:
-        :param func - The function to test.
-        :param kwargs - the keyword arguments to test.
-    Outputs:
-        dict - the subset of kwargs in the function parameters.
-    
-
-    #storing the parameters of func
-    func_args = inspect.signature(func)
-
-    output_dict = {}
-
-    #iterating through kwargs to test if any parameters are in func_args
-    for key in kwargs:
-
-        if key in func_args:
-
-            output_dict[key] = kwargs[key]
-
-    #returning the a
-    return output_dict
-    
-
-
-"""
