@@ -187,13 +187,11 @@ def mean_forecaster(df:pd.DataFrame, target_col:str, horizon:int=1, bootstrap_sa
     #randomly sampling from the errors
     forecasts = np.random.choice(one_step_errors, size = (horizon, bootstrap_samples))
 
-
     
     #manually calculating the first forecast
     first_forecast = mean_one_step_forecast(df[target_col].values, window)
     
     forecasts[0] += first_forecast
-
 
 
     #copying the dataframe to forecast using the randomly sampled errors
@@ -387,7 +385,7 @@ class Mean_forecast:
     """
 
 
-    def __init__(self, window:int=1, pred_width:list = [95,80],
+    def __init__(self, window:int=None, pred_width:list = [95,80],
                  bootstrap:bool = False, bootstrap_samples:int = 100):
 
         """

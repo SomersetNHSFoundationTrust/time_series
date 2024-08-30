@@ -81,11 +81,15 @@ def drift_fitted_forecast(df:pd.DataFrame, target_col:str) -> pd.Series:
 
     """
 
+    quotient = np.arange(1,len(df)-1)
 
-    fitted_values = [drift_one_step_forecast(df[target_col].iloc[:i].values)
-                     for i in range(2,len(df)-1)]
+    first_value = df[target_col].iloc[0]
+
+    slopes = (df[target_col].iloc[1:len(df)-1].values - first_value) / quotient
+
+    fitted_values = df[target_col].iloc[1:len(df)-1].values + slopes
     
-    output = pd.Series(fitted_values, index = df.iloc[3:].index)
+    output = pd.Series(fitted_values, index = df.iloc[2:].index)
    
 
 
@@ -116,7 +120,7 @@ def drift_single_step_error(df:pd.DataFrame,target_col:str) -> pd.Series:
 
 
 
-    return df[target_col].iloc[3:] - fitted_values
+    return df[target_col].iloc[2:] - fitted_values
 
 
 

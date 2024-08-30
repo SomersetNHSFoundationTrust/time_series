@@ -209,7 +209,7 @@ def fitted_forecast_graph(df:pd.DataFrame,target_col:str,model) -> go.Figure:
                                      horizon = None)
 
 
-    fig.add_trace(go.Scatter(x=df.index,y=fitted_forecast['fitted forecast'],
+    fig.add_trace(go.Scatter(x=fitted_forecast.index,y=fitted_forecast['fitted forecast'],
                              line=dict(color='#d1495b'),
                              name='Fitted forecast'))
     
